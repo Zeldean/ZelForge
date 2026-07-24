@@ -6,7 +6,7 @@ import typer
 
 from . import __version__
 from .core import config
-from .core.paths import get_cache_dir, get_config_dir, get_state_dir
+from .core.paths import get_base_path_info
 from .core.storage import ensure_base_dirs
 
 
@@ -33,13 +33,12 @@ def init(yes: bool = typer.Option(False, "--yes", "-y", help="Accept defaults.")
     """Initialize ZelForge folders and starter files."""
     typer.echo("ZelForge will use:")
     _echo_core_paths()
+    typer.echo("")
+    typer.echo("To use custom core locations, set these before running init:")
+    _echo_core_path_env_vars()
 
     if not yes and not typer.confirm("Continue with these locations?", default=True):
         typer.echo("Init cancelled.")
-        typer.echo("Core state/config/cache path overrides can be set with:")
-        typer.echo("  ZEL_STATE_DIR")
-        typer.echo("  ZEL_CONFIG_DIR")
-        typer.echo("  ZEL_CACHE_DIR")
         raise typer.Exit()
 
     ensure_base_dirs()
@@ -151,9 +150,14 @@ def unset_setting(key: str) -> None:
 
 
 def _echo_core_paths() -> None:
-    typer.echo(f"state   {get_state_dir()}")
-    typer.echo(f"config  {get_config_dir()}")
-    typer.echo(f"cache   {get_cache_dir()}")
+    for path_info in get_base_path_info():
+        source = path_info.env_var if path_info.is_env_override else "default"
+        typer.echo(f"{path_info.label:<7} {path_info.path}  ({source})")
+
+
+def _echo_core_path_env_vars() -> None:
+    for path_info in get_base_path_info():
+        typer.echo(f"  {path_info.env_var} for {path_info.label}")
 
 
 if __name__ == "__main__":

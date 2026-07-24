@@ -1,8 +1,16 @@
 import os
 from pathlib import Path
+from typing import NamedTuple
 
 
 APP_DIR_NAME = "zelforge"
+
+
+class PathInfo(NamedTuple):
+    label: str
+    path: Path
+    env_var: str
+    is_env_override: bool
 
 
 def _path_from_env(name: str) -> Path | None:
@@ -40,3 +48,27 @@ def get_cache_dir() -> Path:
         return override
 
     return Path.home() / ".cache" / APP_DIR_NAME
+
+
+def get_base_path_info() -> list[PathInfo]:
+    """Return resolved core paths with their override source metadata."""
+    return [
+        PathInfo(
+            label="state",
+            path=get_state_dir(),
+            env_var="ZEL_STATE_DIR",
+            is_env_override=_path_from_env("ZEL_STATE_DIR") is not None,
+        ),
+        PathInfo(
+            label="config",
+            path=get_config_dir(),
+            env_var="ZEL_CONFIG_DIR",
+            is_env_override=_path_from_env("ZEL_CONFIG_DIR") is not None,
+        ),
+        PathInfo(
+            label="cache",
+            path=get_cache_dir(),
+            env_var="ZEL_CACHE_DIR",
+            is_env_override=_path_from_env("ZEL_CACHE_DIR") is not None,
+        ),
+    ]

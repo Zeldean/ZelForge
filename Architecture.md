@@ -197,6 +197,9 @@ ZEL_CONFIG_DIR
 ZEL_CACHE_DIR
 ```
 
+`zel init` should show both the resolved paths and whether each path came from
+the default or from an environment variable.
+
 Module paths are different. They are user-facing app paths, such as where the
 journal vault lives. These should be stored in config with module-prefixed keys:
 
