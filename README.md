@@ -25,6 +25,9 @@ python -m pip install -e .
 ```bash
 zel --help
 zel version
+zel init
+zel paths
+zeltimer --help
 ```
 
 ## Intended Architecture
@@ -39,6 +42,9 @@ src/zelforge/
     journal/
     media/
 ```
+
+The root `zel` command manages global setup and configuration. Module commands
+such as `zeltimer`, `zeltask`, and `zeljournal` handle app-specific workflows.
 
 The CLI should stay thin. Real behavior should live in app service modules so a
 future web dashboard can call the same logic.

@@ -32,9 +32,9 @@ link blocks to tasks or timers later
 ```bash
 zel config set block.day_start "08:00"
 zel config set block.day_end "18:00"
-zel block add "Deep work" --from 09:00 --to 11:00
-zel block list
-zel block delete <block-id>
+zelblock add "Deep work" --from 09:00 --to 11:00
+zelblock list
+zelblock delete <block-id>
 ```
 
 ## Notes From Old Attempts

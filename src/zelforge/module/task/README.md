@@ -30,11 +30,11 @@ generate recurring or repeated tasks from blueprints
 ## Possible Commands
 
 ```bash
-zel task add "Write timer service"
-zel task list
-zel task done <task-id>
-zel task blueprint add daily-review "Daily review"
-zel task blueprint list
+zeltask add "Write timer service"
+zeltask list
+zeltask done <task-id>
+zeltask blueprint add daily-review "Daily review"
+zeltask blueprint list
 ```
 
 ## Notes From Old Attempts

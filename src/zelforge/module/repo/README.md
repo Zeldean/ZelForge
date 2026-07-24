@@ -32,10 +32,10 @@ run safe maintenance checks later
 
 ```bash
 zel paths set repo.root ~/Repos
-zel repo scan
-zel repo list
-zel repo list --category active
-zel repo status
+zelrepo scan
+zelrepo list
+zelrepo list --category active
+zelrepo status
 ```
 
 ## Notes From Old Attempts

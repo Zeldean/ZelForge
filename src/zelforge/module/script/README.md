@@ -27,9 +27,9 @@ remove scripts that are no longer useful
 ## Possible Commands
 
 ```bash
-zel script choose one two three
-zel script rename-sequential ./folder --dry-run
-zel script convert-png ./folder
+zelscript choose one two three
+zelscript rename-sequential ./folder --dry-run
+zelscript convert-png ./folder
 ```
 
 ## Notes From Old Attempts

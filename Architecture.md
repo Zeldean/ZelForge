@@ -150,8 +150,23 @@ timer definitions and timer sessions should be separate:
 ## Root CLI Commands
 
 The root `zel` command should handle ZelForge-wide setup, inspection, and
-configuration. App-specific work should stay under app commands like
-`zel timer`.
+configuration.
+
+Module-specific work should have its own root command:
+
+```text
+zeltimer
+zeltask
+zeljournal
+zelmedia
+zelscript
+zelrepo
+zelhabit
+zelblock
+```
+
+This keeps quick daily commands short while still allowing `zel` to manage the
+whole ZelForge environment.
 
 Current root command direction:
 
@@ -168,8 +183,10 @@ zel config unset journal.date_format
 zel version
 ```
 
-`zel init` should initialize the base folders and starter files using the paths
-resolved by `core.paths`.
+`zel init` should initialize the base folders and global config file using the
+paths resolved by `core.paths`.
+
+Module storage should be initialized by module commands such as `zeltimer init`.
 
 Core state/config/cache locations are not stored as normal user config yet.
 They come from `core.paths` and may be overridden with environment variables:
@@ -216,24 +233,24 @@ be stable, queryable, and easier to summarize later.
 Possible timer commands:
 
 ```bash
-zel timer init
-zel timer add writing --code write
-zel timer list
-zel timer start write
-zel timer status
-zel timer stop
-zel timer sessions
+zeltimer init
+zeltimer add writing --code write
+zeltimer list
+zeltimer start write
+zeltimer status
+zeltimer stop
+zeltimer sessions
 ```
 
 Possible future commands:
 
 ```bash
-zel timer pause
-zel timer resume
-zel timer cancel
-zel timer edit-session
-zel timer summary --today
-zel timer summary --week
+zeltimer pause
+zeltimer resume
+zeltimer cancel
+zeltimer edit-session
+zeltimer summary --today
+zeltimer summary --week
 ```
 
 Plain flow:

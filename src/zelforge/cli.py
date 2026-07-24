@@ -8,14 +8,11 @@ from . import __version__
 from .core import config
 from .core.paths import get_cache_dir, get_config_dir, get_state_dir
 from .core.storage import ensure_base_dirs
-from .module.timer.cli import app as timer_app
-from .module.timer.storage import init as init_timer_storage
 
 
 cli = typer.Typer(help="ZelForge CLI.")
 paths_app = typer.Typer(help="Manage module paths.")
 config_app = typer.Typer(help="Manage ZelForge settings.")
-cli.add_typer(timer_app, name="timer")
 cli.add_typer(paths_app, name="paths")
 cli.add_typer(config_app, name="config")
 
@@ -47,7 +44,6 @@ def init(yes: bool = typer.Option(False, "--yes", "-y", help="Accept defaults.")
 
     ensure_base_dirs()
     config.init_config()
-    init_timer_storage()
 
     typer.echo("Initialized ZelForge.")
 

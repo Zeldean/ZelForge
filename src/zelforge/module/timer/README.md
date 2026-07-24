@@ -32,14 +32,14 @@ summarize time later
 ## Possible Commands
 
 ```bash
-zel timer add coding --code code
-zel timer start code
-zel timer stop
-zel timer resume code
-zel timer status
-zel timer sessions
-zel timer sessions code --date 2026-07-24
-zel timer sessions --from 2026-07-20 --to 2026-07-24
+zeltimer add coding --code code
+zeltimer start code
+zeltimer stop
+zeltimer resume code
+zeltimer status
+zeltimer sessions
+zeltimer sessions code --date 2026-07-24
+zeltimer sessions --from 2026-07-20 --to 2026-07-24
 ```
 
 ## Notes From Old Attempts

@@ -33,11 +33,11 @@ export useful links or metadata
 ```bash
 zel paths set media.movies ~/Media/Movies
 zel paths set media.series ~/Media/Series
-zel media scan
-zel media clean --dry-run
-zel media clean
-zel media series clean --dry-run
-zel media notes --out ~/Vault/Media
+zelmedia scan
+zelmedia clean --dry-run
+zelmedia clean
+zelmedia series clean --dry-run
+zelmedia notes --out ~/Vault/Media
 ```
 
 ## Notes From Old Attempts

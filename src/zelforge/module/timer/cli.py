@@ -5,7 +5,13 @@ import typer
 from zelforge.module.timer import storage
 
 
-app = typer.Typer(help="Timer commands.")
+app = typer.Typer(help="Timer commands.", no_args_is_help=True)
+cli = app
+
+
+@app.callback()
+def main() -> None:
+    """Track named timers and work sessions."""
 
 
 @app.command()
@@ -113,3 +119,7 @@ def _find_timer(timer_ref: str) -> dict:
             return timer
 
     raise typer.BadParameter(f"Unknown timer: {timer_ref}")
+
+
+if __name__ == "__main__":
+    cli()

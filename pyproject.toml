@@ -15,6 +15,14 @@ dependencies = [
 [project.scripts]
 zel = "zelforge.cli:cli"
 zelforge = "zelforge.cli:cli"
+zeltimer = "zelforge.module.timer.cli:cli"
+zeltask = "zelforge.module.task.cli:cli"
+zeljournal = "zelforge.module.journal.cli:cli"
+zelmedia = "zelforge.module.media.cli:cli"
+zelscript = "zelforge.module.script.cli:cli"
+zelrepo = "zelforge.module.repo.cli:cli"
+zelhabit = "zelforge.module.habit.cli:cli"
+zelblock = "zelforge.module.block.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -33,11 +33,11 @@ manage ignored paths
 ```bash
 zel paths set journal.vault ~/Vault
 zel config set journal.date_format "%Y-%m-%d"
-zel journal note "Worked on timer architecture"
-zel journal daily
-zel journal index
-zel journal files
-zel journal ignore add "archive/**"
+zeljournal note "Worked on timer architecture"
+zeljournal daily
+zeljournal index
+zeljournal files
+zeljournal ignore add "archive/**"
 ```
 
 ## Notes From Old Attempts

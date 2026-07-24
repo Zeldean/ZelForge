@@ -29,12 +29,12 @@ summarize streaks or trends later
 ## Possible Commands
 
 ```bash
-zel habit pill
-zel habit water add 500
-zel habit sleep 7 30
-zel habit read-book
-zel habit show
-zel habit show --date 2026-07-24
+zelhabit pill
+zelhabit water add 500
+zelhabit sleep 7 30
+zelhabit read-book
+zelhabit show
+zelhabit show --date 2026-07-24
 ```
 
 ## Notes From Old Attempts
