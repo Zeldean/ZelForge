@@ -17,6 +17,18 @@ cli.add_typer(paths_app, name="paths")
 cli.add_typer(config_app, name="config")
 
 
+MODULES = [
+    ("timer", "zeltimer", "Track named timers and work sessions."),
+    ("task", "zeltask", "Manage tasks and task blueprints."),
+    ("journal", "zeljournal", "Capture notes and index journal vaults."),
+    ("media", "zelmedia", "Manage local media libraries."),
+    ("script", "zelscript", "Run small utility scripts."),
+    ("repo", "zelrepo", "Index and inspect local repositories."),
+    ("habit", "zelhabit", "Track daily habits."),
+    ("block", "zelblock", "Plan time blocks."),
+]
+
+
 @cli.callback()
 def main() -> None:
     """ZelForge CLI."""
@@ -26,6 +38,13 @@ def main() -> None:
 def version() -> None:
     """Show the installed ZelForge version."""
     typer.echo(f"zelforge {__version__}")
+
+
+@cli.command()
+def modules() -> None:
+    """List available ZelForge modules and their commands."""
+    for name, command, description in MODULES:
+        typer.echo(f"{name:<8} {command:<10} {description}")
 
 
 @cli.command()
@@ -53,6 +72,16 @@ def paths(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand is not None:
         return
 
+    _list_paths()
+
+
+@paths_app.command("list")
+def list_paths() -> None:
+    """List core folders and configured module paths."""
+    _list_paths()
+
+
+def _list_paths() -> None:
     _echo_core_paths()
 
     module_paths = config.load_config()["paths"]

@@ -173,9 +173,11 @@ Current root command direction:
 ```bash
 zel init
 zel paths
+zel paths list
 zel paths set journal.vault ~/Vault
 zel paths get journal.vault
 zel paths unset journal.vault
+zel modules
 zel config
 zel config set journal.date_format "%Y-%m-%d"
 zel config get journal.date_format
