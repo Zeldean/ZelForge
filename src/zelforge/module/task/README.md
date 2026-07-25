@@ -12,6 +12,7 @@ daily planning, timer links, and future dashboard views.
 
 ```text
 create task
+edit task
 list active tasks
 complete task
 review completed tasks
@@ -25,16 +26,21 @@ generate recurring or repeated tasks from blueprints
 - Completed tasks should move into history instead of disappearing.
 - Blueprints describe reusable tasks or recurring task shapes.
 - Tasks may later link to timer sessions, journal notes, projects, or domains.
-- The first version should stay small: create, list, complete.
+- The first version should stay small: create, edit, list, show, complete,
+  cancel, and reopen.
 
 ## Possible Commands
 
 ```bash
 zeltask add "Write timer service"
+zeltask add "Index journal vault" --priority high --tag journal --tag index
 zeltask list
+zeltask list --all
+zeltask show <task-id>
+zeltask edit <task-id> --title "Write task service"
 zeltask done <task-id>
-zeltask blueprint add daily-review "Daily review"
-zeltask blueprint list
+zeltask cancel <task-id>
+zeltask reopen <task-id>
 ```
 
 ## Notes From Old Attempts
@@ -42,3 +48,5 @@ zeltask blueprint list
 The old task app had active tasks, completed/archive storage, and blueprint
 commands. Those concepts are worth keeping, but the new version should use the
 shared ZelForge config, paths, and app-layer structure.
+
+Blueprints and recurring tasks are planned for later.
