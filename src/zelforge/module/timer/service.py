@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from uuid import NAMESPACE_URL, uuid5
 
 from . import storage
@@ -120,7 +120,11 @@ def get_today_status(timer_ref: str | None = None) -> list[dict]:
     """Return today's sessions grouped by timer."""
     timer_filter = find_timer(timer_ref)["id"] if timer_ref else None
     timers_by_id = {timer["id"]: timer for timer in storage.get_timers()}
-    today = datetime.now().astimezone().date()
+    local_now = datetime.now().astimezone()
+    today = local_now.date()
+    local_tz = local_now.tzinfo
+    day_start = datetime.combine(today, time.min, tzinfo=local_tz)
+    day_end = datetime.combine(today, time.max, tzinfo=local_tz)
     sessions_by_id: dict[str, dict] = {}
 
     for session in storage.get_sessions():
@@ -139,11 +143,11 @@ def get_today_status(timer_ref: str | None = None) -> list[dict]:
         if normalized:
             sessions_by_id[normalized["id"]] = normalized
 
-    sessions = [
-        session
-        for session in sessions_by_id.values()
-        if _local_date(session["started_at"]) == today
-    ]
+    sessions = []
+    for session in sessions_by_id.values():
+        clipped = _clip_session_to_range(session, day_start, day_end)
+        if clipped:
+            sessions.append(clipped)
 
     if timer_filter:
         sessions = [
@@ -188,7 +192,7 @@ def get_today_active_sessions(timer_ref: str | None = None) -> list[dict]:
         if not started_at:
             continue
 
-        if _local_date(started_at) != today:
+        if _parse_timestamp(started_at).astimezone().date() != today:
             continue
 
         if timer_filter and session.get("timer_id") != timer_filter:
@@ -412,8 +416,31 @@ def _make_session_id(timer_id: str, started_at: str) -> str:
     return str(uuid5(NAMESPACE_URL, f"zelforge:timer:{timer_id}:{started_at}"))
 
 
-def _local_date(value: str):
-    return _parse_timestamp(value).astimezone().date()
+def _clip_session_to_range(
+    session: dict,
+    range_start: datetime,
+    range_end: datetime,
+) -> dict | None:
+    started_at = _parse_timestamp(session["started_at"]).astimezone()
+    stopped_at = session.get("stopped_at")
+    ended_at = (
+        _parse_timestamp(stopped_at).astimezone()
+        if stopped_at
+        else datetime.now().astimezone()
+    )
+
+    if started_at > range_end or ended_at < range_start:
+        return None
+
+    clipped_start = max(started_at, range_start)
+    clipped_end = min(ended_at, range_end)
+
+    return {
+        **session,
+        "started_at": clipped_start.isoformat(),
+        "stopped_at": None if session.get("active") else clipped_end.isoformat(),
+        "duration_seconds": int((clipped_end - clipped_start).total_seconds()),
+    }
 
 
 def _require_text(value: str, label: str) -> None:
