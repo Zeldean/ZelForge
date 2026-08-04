@@ -128,20 +128,19 @@ def status(timer_ref: str | None = typer.Argument(None)) -> None:
         typer.echo("no timer sessions for today")
         return
 
-    typer.echo("timer sessions today")
     for group in groups:
         timer = group.get("timer", {})
         code = timer.get("code") or "-"
         name = timer.get("name") or "-"
-        typer.echo(f"{code}  {name}")
+        typer.echo(f"{name} ({code})")
 
         for session in group["sessions"]:
             started = _format_time(session["started_at"])
             stopped = "active" if session["active"] else _format_time(session["stopped_at"])
             duration = _format_duration(session["duration_seconds"])
-            typer.echo(f"  {started} -> {stopped:<6} {duration:<8} {session['title']}")
+            typer.echo(f"  {session['title']}  {started} -> {stopped:<6} {duration}")
 
-        typer.echo(f"  total        {_format_duration(group['total_seconds'])}")
+        typer.echo(f"  total  {_format_duration(group['total_seconds'])}")
 
 
 @app.command()
