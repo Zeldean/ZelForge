@@ -142,12 +142,12 @@ def status(timer_ref: str | None = typer.Argument(None)) -> None:
             stopped = "active" if session["active"] else _format_time(session["stopped_at"])
             duration = _format_duration(session["duration_seconds"])
             typer.echo(
-                f"  {session['title']:<{title_width}}  "
+                f"├── {session['title']:<{title_width}}  "
                 f"{started} -> {stopped:<8}  {duration}"
             )
 
         typer.echo(
-            f"  {'total':<{title_width}}  "
+            f"└── {'TOTAL':<{title_width}}  "
             f"{'':>8}    {'':<8}  {_format_duration(group['total_seconds'])}"
         )
 
