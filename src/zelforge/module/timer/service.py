@@ -270,6 +270,9 @@ def _active_sessions_from_events(events: list[dict]) -> list[dict]:
             continue
 
         if event_name == "start":
+            if session_id in active_by_id:
+                continue
+
             active_by_id[session_id] = {
                 "session_id": session_id,
                 "timer_id": event.get("timer_id"),
@@ -294,6 +297,9 @@ def _closed_sessions_from_events(events: list[dict]) -> list[dict]:
             continue
 
         if event_name == "start":
+            if session_id in starts_by_id:
+                continue
+
             starts_by_id[session_id] = event
         elif event_name == "stop":
             start_event = starts_by_id.pop(session_id, None)
