@@ -116,10 +116,21 @@ def save_closed_sessions() -> dict:
     }
 
 
-def get_today_status(timer_ref: str | None = None) -> list[dict]:
+def get_today_status(timer_refs: list[str] | None = None) -> list[dict]:
     """Return today's sessions grouped by timer."""
-    timer_filter = find_timer(timer_ref)["id"] if timer_ref else None
-    timers_by_id = {timer["id"]: timer for timer in storage.get_timers()}
+    timers = storage.get_timers()
+    timer_filters = _find_timer_ids(timer_refs or [], timers)
+    timers_by_id = {timer["id"]: timer for timer in timers}
+    selected_timers = [
+        timer
+        for timer in timers
+        if (
+            timer["id"] in timer_filters
+            if timer_filters
+            else _timer_is_visible_by_default(timer)
+        )
+    ]
+    selected_timer_ids = {timer["id"] for timer in selected_timers}
     local_now = datetime.now().astimezone()
     today = local_now.date()
     local_tz = local_now.tzinfo
@@ -149,25 +160,21 @@ def get_today_status(timer_ref: str | None = None) -> list[dict]:
         if clipped:
             sessions.append(clipped)
 
-    if timer_filter:
-        sessions = [
-            session
-            for session in sessions
-            if session.get("timer_id") == timer_filter
-        ]
+    grouped_by_timer: dict[str, dict] = {
+        timer["id"]: {
+            "timer": timer,
+            "sessions": [],
+            "total_seconds": 0,
+        }
+        for timer in selected_timers
+    }
 
-    grouped_by_timer: dict[str, dict] = {}
     for session in sorted(sessions, key=lambda item: item["started_at"]):
-        timer_id = session["timer_id"]
-        timer = timers_by_id.get(timer_id, {})
-        group = grouped_by_timer.setdefault(
-            timer_id,
-            {
-                "timer": timer,
-                "sessions": [],
-                "total_seconds": 0,
-            },
-        )
+        timer_id = session.get("timer_id")
+        if timer_id not in selected_timer_ids:
+            continue
+
+        group = grouped_by_timer[timer_id]
         group["sessions"].append(session)
         group["total_seconds"] += session["duration_seconds"]
 
@@ -379,6 +386,30 @@ def find_timer(timer_ref: str) -> dict:
             return timer
 
     raise ValueError(f"Unknown timer: {timer_ref}")
+
+
+def _find_timer_ids(timer_refs: list[str], timers: list[dict]) -> set[str]:
+    timer_ids = set()
+
+    for timer_ref in timer_refs:
+        _require_text(timer_ref, "Timer")
+        normalized_ref = _normalize_timer_ref(timer_ref)
+        for timer in timers:
+            if (
+                timer.get("id") == timer_ref
+                or timer.get("code") == timer_ref
+                or timer.get("code") == normalized_ref
+            ):
+                timer_ids.add(timer["id"])
+                break
+        else:
+            raise ValueError(f"Unknown timer: {timer_ref}")
+
+    return timer_ids
+
+
+def _timer_is_visible_by_default(timer: dict) -> bool:
+    return timer.get("active") is not False and timer.get("archived") is not True
 
 
 def _normalize_timer_ref(timer_ref: str) -> str:

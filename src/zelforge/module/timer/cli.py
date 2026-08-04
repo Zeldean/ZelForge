@@ -115,15 +115,15 @@ def save() -> None:
 
 
 @app.command()
-def status(timer_ref: str | None = typer.Argument(None)) -> None:
+def status(timer_refs: list[str] = typer.Argument(None)) -> None:
     """Show today's timer sessions and totals."""
     try:
-        groups = service.get_today_status(timer_ref)
+        groups = service.get_today_status(timer_refs)
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
     if not groups:
-        typer.echo("no timer sessions for today")
+        typer.echo("no timers to display")
         return
 
     for group in groups:
@@ -132,9 +132,7 @@ def status(timer_ref: str | None = typer.Argument(None)) -> None:
         name = timer.get("name") or "-"
         typer.echo(f"{name} ({code})")
 
-        title_width = max(
-            [len(session["title"]) for session in group["sessions"]] + [5]
-        )
+        title_width = max([len(session["title"]) for session in group["sessions"]] + [5])
         for session in group["sessions"]:
             started = _format_time(session["started_at"])
             stopped = "active" if session["active"] else _format_time(session["stopped_at"])
