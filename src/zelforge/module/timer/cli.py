@@ -86,16 +86,17 @@ def resume() -> None:
 
 
 @app.command()
-def stop() -> None:
-    """Stop the active session in the live log."""
+def stop(timer_ref: str) -> None:
+    """Stop a timer's active session in the live log."""
     try:
-        session = service.stop_timer()
+        session = service.stop_timer(timer_ref)
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
     typer.echo(
         f"stopped session {session['session_id'][:8]}: "
-        f"{session['title']} ({session['duration_seconds']}s)"
+        f"{session['timer']['name']} - {session['title']} "
+        f"({session['duration_seconds']}s)"
     )
 
 

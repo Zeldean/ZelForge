@@ -35,7 +35,7 @@ summarize time later
 ```bash
 zeltimer add coding --code code
 zeltimer start code
-zeltimer stop
+zeltimer stop code
 zeltimer resume code
 zeltimer status
 zeltimer sessions

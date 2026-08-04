@@ -9,9 +9,8 @@ from . import storage
 def start_timer(timer_ref: str, title: str | None = None) -> dict:
     """Start a timer by appending a start event to the live log."""
     timer = find_timer(timer_ref)
-    active_sessions = get_active_sessions()
-    if active_sessions:
-        active = active_sessions[0]
+    active = get_active_session_for_timer(timer["id"])
+    if active:
         raise ValueError(
             f"Timer already active: {active['title']} ({active['session_id'][:8]})"
         )
@@ -34,17 +33,13 @@ def start_timer(timer_ref: str, title: str | None = None) -> dict:
     }
 
 
-def stop_timer() -> dict:
-    """Stop the active timer by appending a stop event to the live log."""
-    active_sessions = get_active_sessions()
-    if not active_sessions:
-        raise ValueError("No active timer session")
+def stop_timer(timer_ref: str) -> dict:
+    """Stop one timer by appending a stop event to the live log."""
+    timer = find_timer(timer_ref)
+    active = get_active_session_for_timer(timer["id"])
+    if not active:
+        raise ValueError(f"No active session for timer: {timer_ref}")
 
-    if len(active_sessions) > 1:
-        active_ids = ", ".join(session["session_id"][:8] for session in active_sessions)
-        raise ValueError(f"Multiple active timer sessions found: {active_ids}")
-
-    active = active_sessions[0]
     stopped_at = _now()
     event = {
         "event": "stop",
@@ -55,6 +50,7 @@ def stop_timer() -> dict:
 
     return {
         **active,
+        "timer": timer,
         "stopped_at": stopped_at,
         "duration_seconds": _duration_seconds(active["started_at"], stopped_at),
     }
@@ -82,6 +78,24 @@ def get_active_sessions() -> list[dict]:
             active_by_id.pop(session_id, None)
 
     return list(active_by_id.values())
+
+
+def get_active_session_for_timer(timer_id: str) -> dict | None:
+    """Return the active session for one timer, if it has one."""
+    matches = [
+        session
+        for session in get_active_sessions()
+        if session.get("timer_id") == timer_id
+    ]
+
+    if not matches:
+        return None
+
+    if len(matches) > 1:
+        active_ids = ", ".join(session["session_id"][:8] for session in matches)
+        raise ValueError(f"Multiple active sessions for timer: {active_ids}")
+
+    return matches[0]
 
 
 def find_timer(timer_ref: str) -> dict:
