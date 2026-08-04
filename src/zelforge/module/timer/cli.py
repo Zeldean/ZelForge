@@ -124,11 +124,10 @@ def sessions(timer_ref: str | None = typer.Argument(None)) -> None:
 
 def _find_timer(timer_ref: str) -> dict:
     """Find a timer by UUID id or short code."""
-    for timer in storage.get_timers():
-        if timer.get("id") == timer_ref or timer.get("code") == timer_ref:
-            return timer
-
-    raise typer.BadParameter(f"Unknown timer: {timer_ref}")
+    try:
+        return service.find_timer(timer_ref)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
 
 
 if __name__ == "__main__":

@@ -101,12 +101,24 @@ def get_active_session_for_timer(timer_id: str) -> dict | None:
 def find_timer(timer_ref: str) -> dict:
     """Find a timer by UUID id or short code."""
     _require_text(timer_ref, "Timer")
+    normalized_ref = _normalize_timer_ref(timer_ref)
 
     for timer in storage.get_timers():
-        if timer.get("id") == timer_ref or timer.get("code") == timer_ref:
+        if (
+            timer.get("id") == timer_ref
+            or timer.get("code") == timer_ref
+            or timer.get("code") == normalized_ref
+        ):
             return timer
 
     raise ValueError(f"Unknown timer: {timer_ref}")
+
+
+def _normalize_timer_ref(timer_ref: str) -> str:
+    if timer_ref.isdigit():
+        return timer_ref.zfill(2)
+
+    return timer_ref
 
 
 def _duration_seconds(started_at: str, stopped_at: str) -> int:

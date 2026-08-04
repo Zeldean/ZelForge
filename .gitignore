@@ -1,5 +1,6 @@
 dump/
 temp/
+state
 .git-zelforge/
 
 __pycache__/
