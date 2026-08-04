@@ -38,6 +38,7 @@ zeltimer start code
 zeltimer stop code
 zeltimer resume code
 zeltimer status
+zeltimer status code
 zeltimer sessions
 zeltimer save
 zeltimer sessions code --date 2026-07-24

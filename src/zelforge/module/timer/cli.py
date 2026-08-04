@@ -117,9 +117,27 @@ def save() -> None:
 
 
 @app.command()
-def status() -> None:
-    """Show active timer status."""
-    typer.echo("status is planned, but service logic is not implemented yet")
+def status(timer_ref: str | None = typer.Argument(None)) -> None:
+    """Show today's active timer sessions."""
+    try:
+        sessions = service.get_today_active_sessions(timer_ref)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    if not sessions:
+        typer.echo("no active timer sessions for today")
+        return
+
+    typer.echo("active timer sessions today")
+    for session in sessions:
+        timer = session.get("timer", {})
+        code = timer.get("code") or session.get("timer_code") or "-"
+        name = timer.get("name") or session.get("timer_id") or "-"
+        started = session["started_at"][11:16]
+        elapsed = _format_duration(session["elapsed_seconds"])
+        typer.echo(
+            f"{code:<4} {name:<16} {started}  {elapsed:<8} {session['title']}"
+        )
 
 
 @app.command()
@@ -144,6 +162,19 @@ def _find_timer(timer_ref: str) -> dict:
         return service.find_timer(timer_ref)
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
+
+
+def _format_duration(total_seconds: int) -> str:
+    hours, remainder = divmod(max(total_seconds, 0), 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    if hours:
+        return f"{hours}h {minutes}m"
+
+    if minutes:
+        return f"{minutes}m {seconds}s"
+
+    return f"{seconds}s"
 
 
 if __name__ == "__main__":

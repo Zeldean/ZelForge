@@ -116,6 +116,36 @@ def save_closed_sessions() -> dict:
     }
 
 
+def get_today_active_sessions(timer_ref: str | None = None) -> list[dict]:
+    """Return active sessions that started during the current UTC day."""
+    timer_filter = find_timer(timer_ref)["id"] if timer_ref else None
+    timers_by_id = {timer["id"]: timer for timer in storage.get_timers()}
+    today = datetime.now(timezone.utc).date()
+    sessions = []
+
+    for session in get_active_sessions():
+        started_at = session.get("started_at")
+        if not started_at:
+            continue
+
+        if _parse_timestamp(started_at).date() != today:
+            continue
+
+        if timer_filter and session.get("timer_id") != timer_filter:
+            continue
+
+        timer = timers_by_id.get(session.get("timer_id"), {})
+        sessions.append(
+            {
+                **session,
+                "timer": timer,
+                "elapsed_seconds": _duration_seconds(started_at, _now()),
+            }
+        )
+
+    return sorted(sessions, key=lambda session: session["started_at"])
+
+
 def get_active_sessions() -> list[dict]:
     """Return active sessions reconstructed from the event log."""
     return _active_sessions_from_events(storage.read_log_events())
