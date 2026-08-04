@@ -1,19 +1,22 @@
 """Storage setup helpers for the timer module."""
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from zelforge.core.paths import get_state_dir
-from zelforge.core.storage import(
+from zelforge.core.storage import (
     ensure_dir,
+    ensure_parent_dir,
     read_json,
     write_json,
-    get_meta
+    get_meta,
 )
 
 
 STATE_NAME = "timer"
+LOG_FILE_NAME = "log.txt"
 
 # Each storage object maps to one JSON file with the same top-level array name.
 _OBJECTS = {
@@ -33,12 +36,21 @@ def get_timer_dir() -> Path:
     return get_state_dir() / STATE_NAME
 
 
+def get_log_path() -> Path:
+    """Return the timer event log path."""
+    return get_timer_dir() / LOG_FILE_NAME
+
+
 def init() -> dict:
     """Create the basic timer storage files if they do not already exist."""
     ensure_dir(get_timer_dir())
 
     for name in _OBJECTS:
         _create_object(name)
+
+    ensure_parent_dir(get_log_path())
+    if not get_log_path().exists():
+        get_log_path().write_text("", encoding="utf-8")
 
     return {"status": "success"}
 
@@ -115,6 +127,36 @@ def add_session(
     _save_object("sessions", data)
 
     return session
+
+
+def append_log_event(event: dict) -> dict:
+    """Append one JSON event to the timer text log."""
+    ensure_parent_dir(get_log_path())
+
+    with get_log_path().open("a", encoding="utf-8") as file:
+        file.write(json.dumps(event, sort_keys=True))
+        file.write("\n")
+
+    return event
+
+
+def read_log_events() -> list[dict]:
+    """Read timer log events from the text log."""
+    log_path = get_log_path()
+    if not log_path.exists():
+        return []
+
+    events = []
+    for line_number, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError as error:
+            raise ValueError(f"Invalid timer log line {line_number}: {error.msg}") from error
+
+    return events
 
 
 def _get_object_config(name: str) -> dict:

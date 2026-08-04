@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typer
 
+from zelforge.module.timer import service
 from zelforge.module.timer import storage
 
 
@@ -60,16 +61,16 @@ def start(
     timer_ref: str,
     title: str | None = typer.Option(None, help="Session title."),
 ) -> None:
-    """Start a new timer session."""
-    timer = _find_timer(timer_ref)
-    session_title = title or timer["name"]
+    """Start a new timer session in the live log."""
+    try:
+        session = service.start_timer(timer_ref, title=title)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
 
-    session = storage.add_session(
-        timer_id=timer["id"],
-        title=session_title,
+    typer.echo(
+        f"started session {session['session_id'][:8]} "
+        f"for {session['timer']['name']}: {session['title']}"
     )
-
-    typer.echo(f"started session {session['id']} for {timer['name']}")
 
 
 @app.command()
@@ -86,8 +87,16 @@ def resume() -> None:
 
 @app.command()
 def stop() -> None:
-    """Stop the active session."""
-    typer.echo("stop is planned, but service logic is not implemented yet")
+    """Stop the active session in the live log."""
+    try:
+        session = service.stop_timer()
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(
+        f"stopped session {session['session_id'][:8]}: "
+        f"{session['title']} ({session['duration_seconds']}s)"
+    )
 
 
 @app.command()
