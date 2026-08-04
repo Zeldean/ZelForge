@@ -116,11 +116,71 @@ def save_closed_sessions() -> dict:
     }
 
 
-def get_today_active_sessions(timer_ref: str | None = None) -> list[dict]:
-    """Return active sessions that started during the current UTC day."""
+def get_today_status(timer_ref: str | None = None) -> list[dict]:
+    """Return today's sessions grouped by timer."""
     timer_filter = find_timer(timer_ref)["id"] if timer_ref else None
     timers_by_id = {timer["id"]: timer for timer in storage.get_timers()}
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now().astimezone().date()
+    sessions_by_id: dict[str, dict] = {}
+
+    for session in storage.get_sessions():
+        normalized = _status_session_from_saved(session, timers_by_id)
+        if normalized:
+            sessions_by_id[normalized["id"]] = normalized
+
+    events = storage.read_log_events()
+    for session in _closed_sessions_from_events(events):
+        normalized = _status_session_from_saved(session, timers_by_id)
+        if normalized:
+            sessions_by_id[normalized["id"]] = normalized
+
+    for session in _active_sessions_from_events(events):
+        normalized = _status_session_from_active(session, timers_by_id)
+        if normalized:
+            sessions_by_id[normalized["id"]] = normalized
+
+    sessions = [
+        session
+        for session in sessions_by_id.values()
+        if _local_date(session["started_at"]) == today
+    ]
+
+    if timer_filter:
+        sessions = [
+            session
+            for session in sessions
+            if session.get("timer_id") == timer_filter
+        ]
+
+    grouped_by_timer: dict[str, dict] = {}
+    for session in sorted(sessions, key=lambda item: item["started_at"]):
+        timer_id = session["timer_id"]
+        timer = timers_by_id.get(timer_id, {})
+        group = grouped_by_timer.setdefault(
+            timer_id,
+            {
+                "timer": timer,
+                "sessions": [],
+                "total_seconds": 0,
+            },
+        )
+        group["sessions"].append(session)
+        group["total_seconds"] += session["duration_seconds"]
+
+    return sorted(
+        grouped_by_timer.values(),
+        key=lambda group: (
+            group["timer"].get("code") or "",
+            group["timer"].get("name") or "",
+        ),
+    )
+
+
+def get_today_active_sessions(timer_ref: str | None = None) -> list[dict]:
+    """Return active sessions that started during the current local day."""
+    timer_filter = find_timer(timer_ref)["id"] if timer_ref else None
+    timers_by_id = {timer["id"]: timer for timer in storage.get_timers()}
+    today = datetime.now().astimezone().date()
     sessions = []
 
     for session in get_active_sessions():
@@ -128,7 +188,7 @@ def get_today_active_sessions(timer_ref: str | None = None) -> list[dict]:
         if not started_at:
             continue
 
-        if _parse_timestamp(started_at).date() != today:
+        if _local_date(started_at) != today:
             continue
 
         if timer_filter and session.get("timer_id") != timer_filter:
@@ -144,6 +204,55 @@ def get_today_active_sessions(timer_ref: str | None = None) -> list[dict]:
         )
 
     return sorted(sessions, key=lambda session: session["started_at"])
+
+
+def _status_session_from_saved(
+    session: dict,
+    timers_by_id: dict[str, dict],
+) -> dict | None:
+    started_at = session.get("started_at")
+    stopped_at = session.get("stopped_at")
+    timer_id = session.get("timer_id")
+    if not started_at or not timer_id:
+        return None
+
+    duration = session.get("duration_seconds")
+    if duration is None and stopped_at:
+        duration = _duration_seconds(started_at, stopped_at)
+    elif duration is None:
+        duration = 0
+
+    return {
+        "id": session.get("id") or session.get("session_id"),
+        "timer_id": timer_id,
+        "timer": timers_by_id.get(timer_id, {}),
+        "title": session.get("title") or "",
+        "started_at": started_at,
+        "stopped_at": stopped_at,
+        "duration_seconds": max(int(duration), 0),
+        "active": stopped_at is None,
+    }
+
+
+def _status_session_from_active(
+    session: dict,
+    timers_by_id: dict[str, dict],
+) -> dict | None:
+    started_at = session.get("started_at")
+    timer_id = session.get("timer_id")
+    if not started_at or not timer_id:
+        return None
+
+    return {
+        "id": session["session_id"],
+        "timer_id": timer_id,
+        "timer": timers_by_id.get(timer_id, {}),
+        "title": session.get("title") or "",
+        "started_at": started_at,
+        "stopped_at": None,
+        "duration_seconds": _duration_seconds(started_at, _now()),
+        "active": True,
+    }
 
 
 def get_active_sessions() -> list[dict]:
@@ -256,6 +365,10 @@ def _duration_seconds(started_at: str, stopped_at: str) -> int:
 
 def _parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value)
+
+
+def _local_date(value: str):
+    return _parse_timestamp(value).astimezone().date()
 
 
 def _require_text(value: str, label: str) -> None:

@@ -118,26 +118,30 @@ def save() -> None:
 
 @app.command()
 def status(timer_ref: str | None = typer.Argument(None)) -> None:
-    """Show today's active timer sessions."""
+    """Show today's timer sessions and totals."""
     try:
-        sessions = service.get_today_active_sessions(timer_ref)
+        groups = service.get_today_status(timer_ref)
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
-    if not sessions:
-        typer.echo("no active timer sessions for today")
+    if not groups:
+        typer.echo("no timer sessions for today")
         return
 
-    typer.echo("active timer sessions today")
-    for session in sessions:
-        timer = session.get("timer", {})
-        code = timer.get("code") or session.get("timer_code") or "-"
-        name = timer.get("name") or session.get("timer_id") or "-"
-        started = session["started_at"][11:16]
-        elapsed = _format_duration(session["elapsed_seconds"])
-        typer.echo(
-            f"{code:<4} {name:<16} {started}  {elapsed:<8} {session['title']}"
-        )
+    typer.echo("timer sessions today")
+    for group in groups:
+        timer = group.get("timer", {})
+        code = timer.get("code") or "-"
+        name = timer.get("name") or "-"
+        typer.echo(f"{code}  {name}")
+
+        for session in group["sessions"]:
+            started = _format_time(session["started_at"])
+            stopped = "active" if session["active"] else _format_time(session["stopped_at"])
+            duration = _format_duration(session["duration_seconds"])
+            typer.echo(f"  {started} -> {stopped:<6} {duration:<8} {session['title']}")
+
+        typer.echo(f"  total        {_format_duration(group['total_seconds'])}")
 
 
 @app.command()
@@ -175,6 +179,10 @@ def _format_duration(total_seconds: int) -> str:
         return f"{minutes}m {seconds}s"
 
     return f"{seconds}s"
+
+
+def _format_time(value: str) -> str:
+    return value[11:16]
 
 
 if __name__ == "__main__":
