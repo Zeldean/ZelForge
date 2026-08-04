@@ -56,11 +56,75 @@ def stop_timer(timer_ref: str) -> dict:
     }
 
 
+def save_closed_sessions() -> dict:
+    """Promote old closed log sessions into permanent session storage."""
+    events = storage.read_log_events()
+    closed_sessions = _closed_sessions_from_events(events)
+    cutoff_date = datetime.now(timezone.utc).date()
+    invalid_sessions = [
+        session
+        for session in closed_sessions
+        if session["duration_seconds"] < 0
+    ]
+    promotable = [
+        session
+        for session in closed_sessions
+        if (
+            session["duration_seconds"] >= 0
+            and _parse_timestamp(session["started_at"]).date() < cutoff_date
+        )
+    ]
+
+    if not promotable:
+        return {
+            "saved": 0,
+            "skipped_invalid": len(invalid_sessions),
+            "remaining_events": len(events),
+            "active": len(get_active_sessions()),
+        }
+
+    sessions_data = storage.get_sessions_data()
+    existing_ids = {session.get("id") for session in sessions_data["sessions"]}
+    promoted_session_ids = set()
+    saved = 0
+
+    for session in promotable:
+        promoted_session_ids.add(session["id"])
+        if session["id"] in existing_ids:
+            continue
+
+        sessions_data["sessions"].append(session)
+        existing_ids.add(session["id"])
+        saved += 1
+
+    storage.save_sessions_data(sessions_data)
+
+    remaining_events = [
+        event
+        for event in events
+        if event.get("session_id") not in promoted_session_ids
+    ]
+    storage.write_log_events(remaining_events)
+
+    return {
+        "saved": saved,
+        "promoted": len(promotable),
+        "skipped_invalid": len(invalid_sessions),
+        "removed_events": len(events) - len(remaining_events),
+        "remaining_events": len(remaining_events),
+        "active": len(_active_sessions_from_events(remaining_events)),
+    }
+
+
 def get_active_sessions() -> list[dict]:
     """Return active sessions reconstructed from the event log."""
+    return _active_sessions_from_events(storage.read_log_events())
+
+
+def _active_sessions_from_events(events: list[dict]) -> list[dict]:
     active_by_id: dict[str, dict] = {}
 
-    for event in storage.read_log_events():
+    for event in events:
         event_name = event.get("event")
         session_id = event.get("session_id")
         if not session_id:
@@ -78,6 +142,39 @@ def get_active_sessions() -> list[dict]:
             active_by_id.pop(session_id, None)
 
     return list(active_by_id.values())
+
+
+def _closed_sessions_from_events(events: list[dict]) -> list[dict]:
+    starts_by_id: dict[str, dict] = {}
+    closed_sessions = []
+
+    for event in events:
+        event_name = event.get("event")
+        session_id = event.get("session_id")
+        if not session_id:
+            continue
+
+        if event_name == "start":
+            starts_by_id[session_id] = event
+        elif event_name == "stop":
+            start_event = starts_by_id.pop(session_id, None)
+            if not start_event:
+                continue
+
+            started_at = start_event["created_at"]
+            stopped_at = event["created_at"]
+            closed_sessions.append(
+                {
+                    "id": session_id,
+                    "timer_id": start_event["timer_id"],
+                    "title": start_event.get("title") or "",
+                    "started_at": started_at,
+                    "stopped_at": stopped_at,
+                    "duration_seconds": _duration_seconds(started_at, stopped_at),
+                }
+            )
+
+    return closed_sessions
 
 
 def get_active_session_for_timer(timer_id: str) -> dict | None:
@@ -122,9 +219,13 @@ def _normalize_timer_ref(timer_ref: str) -> str:
 
 
 def _duration_seconds(started_at: str, stopped_at: str) -> int:
-    started = datetime.fromisoformat(started_at)
-    stopped = datetime.fromisoformat(stopped_at)
+    started = _parse_timestamp(started_at)
+    stopped = _parse_timestamp(stopped_at)
     return int((stopped - started).total_seconds())
+
+
+def _parse_timestamp(value: str) -> datetime:
+    return datetime.fromisoformat(value)
 
 
 def _require_text(value: str, label: str) -> None:

@@ -39,6 +39,7 @@ zeltimer stop code
 zeltimer resume code
 zeltimer status
 zeltimer sessions
+zeltimer save
 zeltimer sessions code --date 2026-07-24
 zeltimer sessions --from 2026-07-20 --to 2026-07-24
 ```
@@ -50,5 +51,5 @@ status filtering by date, and timer-specific resume. Those ideas should be
 rebuilt deliberately rather than copied directly.
 
 Current implementation writes `start` and `stop` events to `timer/log.txt`.
-Promotion from the log into permanent `sessions.json` is planned for a later
-slice.
+`zeltimer save` promotes closed sessions older than the current UTC day into
+permanent `sessions.json` and removes those events from the log.

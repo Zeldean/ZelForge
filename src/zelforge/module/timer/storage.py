@@ -67,6 +67,16 @@ def get_sessions() -> list[dict]:
     return data["sessions"]
 
 
+def get_sessions_data() -> dict:
+    """Return the full sessions storage object."""
+    return _load_object("sessions")
+
+
+def save_sessions_data(data: dict) -> Path:
+    """Save the full sessions storage object."""
+    return _save_object("sessions", data)
+
+
 def add_timer(
     name: str,
     description: str = "",
@@ -157,6 +167,18 @@ def read_log_events() -> list[dict]:
             raise ValueError(f"Invalid timer log line {line_number}: {error.msg}") from error
 
     return events
+
+
+def write_log_events(events: list[dict]) -> Path:
+    """Rewrite the timer text log with JSON events."""
+    ensure_parent_dir(get_log_path())
+
+    with get_log_path().open("w", encoding="utf-8") as file:
+        for event in events:
+            file.write(json.dumps(event, sort_keys=True))
+            file.write("\n")
+
+    return get_log_path()
 
 
 def _get_object_config(name: str) -> dict:

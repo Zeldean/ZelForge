@@ -101,6 +101,22 @@ def stop(timer_ref: str) -> None:
 
 
 @app.command()
+def save() -> None:
+    """Save old closed log sessions into permanent storage."""
+    try:
+        result = service.save_closed_sessions()
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(
+        f"saved {result['saved']} sessions; "
+        f"skipped {result.get('skipped_invalid', 0)} invalid sessions; "
+        f"removed {result.get('removed_events', 0)} log events; "
+        f"{result['remaining_events']} log events remain"
+    )
+
+
+@app.command()
 def status() -> None:
     """Show active timer status."""
     typer.echo("status is planned, but service logic is not implemented yet")
