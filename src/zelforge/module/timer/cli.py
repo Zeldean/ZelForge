@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import typer
 
 from zelforge.module.timer import service
@@ -143,12 +145,12 @@ def status(timer_ref: str | None = typer.Argument(None)) -> None:
             duration = _format_duration(session["duration_seconds"])
             typer.echo(
                 f"├── {session['title']:<{title_width}}  "
-                f"{started} -> {stopped:<8}  {duration}"
+                f"{started} -> {stopped:<6}  {duration}"
             )
 
         typer.echo(
             f"└── {'TOTAL':<{title_width}}  "
-            f"{'':>8}    {'':<8}  {_format_duration(group['total_seconds'])}"
+            f"{'':>5}    {'':<6}  {_format_duration(group['total_seconds'])}"
         )
 
 
@@ -187,7 +189,8 @@ def _format_duration(total_seconds: int) -> str:
 
 
 def _format_time(value: str) -> str:
-    return value[11:19]
+    timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return timestamp.astimezone().strftime("%H:%M")
 
 
 if __name__ == "__main__":
