@@ -69,10 +69,7 @@ def start(
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
-    typer.echo(
-        f"started session {session['session_id'][:8]} "
-        f"for {session['timer']['name']}: {session['title']}"
-    )
+    typer.echo(f"started {session['timer']['name']}: {session['title']}")
 
 
 @app.command()
@@ -96,9 +93,8 @@ def stop(timer_ref: str) -> None:
         raise typer.BadParameter(str(error)) from error
 
     typer.echo(
-        f"stopped session {session['session_id'][:8]}: "
-        f"{session['timer']['name']} - {session['title']} "
-        f"({session['duration_seconds']}s)"
+        f"stopped {session['timer']['name']}: "
+        f"{session['title']} ({session['duration_seconds']}s)"
     )
 
 

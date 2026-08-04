@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid5
 
 from . import storage
 
@@ -11,22 +11,17 @@ def start_timer(timer_ref: str, title: str | None = None) -> dict:
     timer = find_timer(timer_ref)
     active = get_active_session_for_timer(timer["id"])
     if active:
-        raise ValueError(
-            f"Timer already active: {active['title']} ({active['session_id'][:8]})"
-        )
+        raise ValueError(f"Timer already active: {active['title']}")
 
     event = {
         "event": "start",
-        "session_id": str(uuid4()),
         "timer_id": timer["id"],
-        "timer_code": timer.get("code"),
         "title": title or timer["name"],
         "created_at": _now(),
     }
     storage.append_log_event(event)
 
     return {
-        "session_id": event["session_id"],
         "timer": timer,
         "title": event["title"],
         "started_at": event["created_at"],
@@ -43,7 +38,7 @@ def stop_timer(timer_ref: str) -> dict:
     stopped_at = _now()
     event = {
         "event": "stop",
-        "session_id": active["session_id"],
+        "timer_id": timer["id"],
         "created_at": stopped_at,
     }
     storage.append_log_event(event)
@@ -85,15 +80,20 @@ def save_closed_sessions() -> dict:
 
     sessions_data = storage.get_sessions_data()
     existing_ids = {session.get("id") for session in sessions_data["sessions"]}
-    promoted_session_ids = set()
+    promoted_event_indexes = set()
     saved = 0
 
     for session in promotable:
-        promoted_session_ids.add(session["id"])
+        promoted_event_indexes.update(session.get("_log_indexes", []))
+        persisted_session = {
+            key: value
+            for key, value in session.items()
+            if not key.startswith("_")
+        }
         if session["id"] in existing_ids:
             continue
 
-        sessions_data["sessions"].append(session)
+        sessions_data["sessions"].append(persisted_session)
         existing_ids.add(session["id"])
         saved += 1
 
@@ -101,8 +101,8 @@ def save_closed_sessions() -> dict:
 
     remaining_events = [
         event
-        for event in events
-        if event.get("session_id") not in promoted_session_ids
+        for index, event in enumerate(events)
+        if index not in promoted_event_indexes
     ]
     storage.write_log_events(remaining_events)
 
@@ -244,7 +244,7 @@ def _status_session_from_active(
         return None
 
     return {
-        "id": session["session_id"],
+        "id": session["id"],
         "timer_id": timer_id,
         "timer": timers_by_id.get(timer_id, {}),
         "title": session.get("title") or "",
@@ -261,53 +261,73 @@ def get_active_sessions() -> list[dict]:
 
 
 def _active_sessions_from_events(events: list[dict]) -> list[dict]:
-    active_by_id: dict[str, dict] = {}
+    active_by_session_id: dict[str, dict] = {}
+    active_by_timer_id: dict[str, dict] = {}
 
     for event in events:
         event_name = event.get("event")
         session_id = event.get("session_id")
-        if not session_id:
-            continue
+        timer_id = event.get("timer_id")
 
         if event_name == "start":
-            if session_id in active_by_id:
+            active = _active_session_from_start_event(event)
+            if not active:
                 continue
 
-            active_by_id[session_id] = {
-                "session_id": session_id,
-                "timer_id": event.get("timer_id"),
-                "timer_code": event.get("timer_code"),
-                "title": event.get("title") or "",
-                "started_at": event.get("created_at"),
-            }
-        elif event_name == "stop":
-            active_by_id.pop(session_id, None)
+            if session_id:
+                if session_id in active_by_session_id:
+                    continue
 
-    return list(active_by_id.values())
+                active_by_session_id[session_id] = active
+            elif timer_id and timer_id not in active_by_timer_id:
+                active_by_timer_id[timer_id] = active
+        elif event_name == "stop":
+            if session_id:
+                active_by_session_id.pop(session_id, None)
+            elif timer_id:
+                active_by_timer_id.pop(timer_id, None)
+
+    return [
+        *active_by_session_id.values(),
+        *active_by_timer_id.values(),
+    ]
 
 
 def _closed_sessions_from_events(events: list[dict]) -> list[dict]:
-    starts_by_id: dict[str, dict] = {}
+    starts_by_session_id: dict[str, dict] = {}
+    starts_by_timer_id: dict[str, dict] = {}
     closed_sessions = []
 
-    for event in events:
+    for index, event in enumerate(events):
         event_name = event.get("event")
         session_id = event.get("session_id")
-        if not session_id:
-            continue
+        timer_id = event.get("timer_id")
 
         if event_name == "start":
-            if session_id in starts_by_id:
-                continue
+            if session_id:
+                if session_id in starts_by_session_id:
+                    continue
 
-            starts_by_id[session_id] = event
+                starts_by_session_id[session_id] = {**event, "_log_index": index}
+            elif timer_id and timer_id not in starts_by_timer_id:
+                starts_by_timer_id[timer_id] = {**event, "_log_index": index}
         elif event_name == "stop":
-            start_event = starts_by_id.pop(session_id, None)
+            if session_id:
+                start_event = starts_by_session_id.pop(session_id, None)
+            elif timer_id:
+                start_event = starts_by_timer_id.pop(timer_id, None)
+            else:
+                start_event = None
+
             if not start_event:
                 continue
 
             started_at = start_event["created_at"]
             stopped_at = event["created_at"]
+            session_id = start_event.get("session_id") or _make_session_id(
+                start_event["timer_id"],
+                started_at,
+            )
             closed_sessions.append(
                 {
                     "id": session_id,
@@ -316,6 +336,7 @@ def _closed_sessions_from_events(events: list[dict]) -> list[dict]:
                     "started_at": started_at,
                     "stopped_at": stopped_at,
                     "duration_seconds": _duration_seconds(started_at, stopped_at),
+                    "_log_indexes": [start_event["_log_index"], index],
                 }
             )
 
@@ -334,8 +355,8 @@ def get_active_session_for_timer(timer_id: str) -> dict | None:
         return None
 
     if len(matches) > 1:
-        active_ids = ", ".join(session["session_id"][:8] for session in matches)
-        raise ValueError(f"Multiple active sessions for timer: {active_ids}")
+        titles = ", ".join(session["title"] for session in matches)
+        raise ValueError(f"Multiple active sessions for timer: {titles}")
 
     return matches[0]
 
@@ -371,6 +392,24 @@ def _duration_seconds(started_at: str, stopped_at: str) -> int:
 
 def _parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value)
+
+
+def _active_session_from_start_event(event: dict) -> dict | None:
+    timer_id = event.get("timer_id")
+    started_at = event.get("created_at")
+    if not timer_id or not started_at:
+        return None
+
+    return {
+        "id": event.get("session_id") or _make_session_id(timer_id, started_at),
+        "timer_id": timer_id,
+        "title": event.get("title") or "",
+        "started_at": started_at,
+    }
+
+
+def _make_session_id(timer_id: str, started_at: str) -> str:
+    return str(uuid5(NAMESPACE_URL, f"zelforge:timer:{timer_id}:{started_at}"))
 
 
 def _local_date(value: str):
