@@ -134,13 +134,22 @@ def status(timer_ref: str | None = typer.Argument(None)) -> None:
         name = timer.get("name") or "-"
         typer.echo(f"{name} ({code})")
 
+        title_width = max(
+            [len(session["title"]) for session in group["sessions"]] + [5]
+        )
         for session in group["sessions"]:
             started = _format_time(session["started_at"])
             stopped = "active" if session["active"] else _format_time(session["stopped_at"])
             duration = _format_duration(session["duration_seconds"])
-            typer.echo(f"  {session['title']}  {started} -> {stopped:<6} {duration}")
+            typer.echo(
+                f"  {session['title']:<{title_width}}  "
+                f"{started} -> {stopped:<8}  {duration}"
+            )
 
-        typer.echo(f"  total  {_format_duration(group['total_seconds'])}")
+        typer.echo(
+            f"  {'total':<{title_width}}  "
+            f"{'':>8}    {'':<8}  {_format_duration(group['total_seconds'])}"
+        )
 
 
 @app.command()
@@ -172,16 +181,13 @@ def _format_duration(total_seconds: int) -> str:
     minutes, seconds = divmod(remainder, 60)
 
     if hours:
-        return f"{hours}h {minutes}m"
+        return f"{hours}h {minutes:02}m {seconds:02}s"
 
-    if minutes:
-        return f"{minutes}m {seconds}s"
-
-    return f"{seconds}s"
+    return f"{minutes}m {seconds:02}s"
 
 
 def _format_time(value: str) -> str:
-    return value[11:16]
+    return value[11:19]
 
 
 if __name__ == "__main__":
