@@ -149,6 +149,14 @@ def status(timer_refs: list[str] = typer.Argument(None)) -> None:
 
 
 @app.command()
+def tui() -> None:
+    """Open the interactive timer TUI."""
+    from .tui import run
+
+    run()
+
+
+@app.command()
 def sessions(timer_ref: str | None = typer.Argument(None)) -> None:
     """List timer sessions."""
     timer_id = _find_timer(timer_ref)["id"] if timer_ref else None

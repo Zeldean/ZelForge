@@ -39,10 +39,26 @@ zeltimer stop code
 zeltimer resume code
 zeltimer status
 zeltimer status code
+zeltimer tui
 zeltimer sessions
 zeltimer save
 zeltimer sessions code --date 2026-07-24
 zeltimer sessions --from 2026-07-20 --to 2026-07-24
+```
+
+## Demo TUI
+
+`zeltimer tui` opens a small curses interface over the same timer services used
+by the CLI. It can browse today's timers, show sessions and totals, start or
+stop the selected timer, and refresh the view.
+
+Controls:
+
+```text
+up/down or j/k  select timer
+enter or s      start/stop selected timer
+r               refresh
+q               quit
 ```
 
 ## Notes From Old Attempts
