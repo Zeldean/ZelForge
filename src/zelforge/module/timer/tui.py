@@ -19,6 +19,7 @@ def _run(screen) -> None:
     _init_colors(screen)
     _set_cursor(False)
     screen.keypad(True)
+    screen.timeout(1000)
     state = {
         "selected": 0,
         "offset": 0,
@@ -32,6 +33,9 @@ def _run(screen) -> None:
         _draw(screen, groups, state)
 
         key = screen.getch()
+        if key == -1:
+            continue
+
         if key in (ord("q"), ord("Q")):
             return
         if key in (curses.KEY_UP, ord("k"), ord("K")):
