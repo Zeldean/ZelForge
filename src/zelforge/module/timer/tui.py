@@ -7,6 +7,7 @@ from . import service
 
 
 HELP_TEXT = "q quit  r refresh  up/down select  enter/s start or stop"
+DEFAULT_ATTR = curses.A_NORMAL
 
 
 def run() -> None:
@@ -15,6 +16,7 @@ def run() -> None:
 
 
 def _run(screen) -> None:
+    _init_colors(screen)
     _set_cursor(False)
     screen.keypad(True)
     state = {
@@ -45,11 +47,11 @@ def _run(screen) -> None:
 def _draw(screen, groups: list[dict], state: dict) -> None:
     screen.erase()
     height, width = screen.getmaxyx()
-    _add_line(screen, 0, 0, "ZelTimer", curses.A_BOLD)
+    _add_line(screen, 0, 0, "ZelTimer", _attr(curses.A_BOLD))
     _add_line(screen, 1, 0, HELP_TEXT)
 
     if state.get("message"):
-        _add_line(screen, 2, 0, state["message"], curses.A_DIM)
+        _add_line(screen, 2, 0, state["message"], _attr(curses.A_DIM))
 
     row = 4
     if not groups:
@@ -117,7 +119,7 @@ def _draw_timer_group(
     marker = ">" if selected else " "
     status = "running" if active else "idle"
     title = f"{marker} {name} ({code}) [{status}]"
-    _add_line(screen, row, 0, title, curses.A_REVERSE if selected else curses.A_NORMAL)
+    _add_line(screen, row, 0, title, _attr(curses.A_BOLD if selected else curses.A_NORMAL))
     row += 1
 
     title_width = max([len(session["title"]) for session in group["sessions"]] + [5])
@@ -134,7 +136,7 @@ def _draw_timer_group(
 
     total = _format_duration(group["total_seconds"])
     line = f"  └── {'TOTAL':<{title_width}}  {'':>5}    {'':<6}  {total}"
-    _add_line(screen, row, 0, line, curses.A_BOLD)
+    _add_line(screen, row, 0, line, _attr(curses.A_BOLD))
     return row + 1
 
 
@@ -205,14 +207,40 @@ def _prompt(screen, label: str, default: str = "") -> str | None:
     return text or default
 
 
-def _add_line(screen, row: int, column: int, text: str, attr: int = curses.A_NORMAL) -> None:
+def _add_line(screen, row: int, column: int, text: str, attr: int | None = None) -> None:
     height, width = screen.getmaxyx()
     if row < 0 or row >= height or column >= width:
         return
 
     available_width = max(width - column - 1, 0)
     if available_width:
-        screen.addnstr(row, column, text, available_width, attr)
+        screen.addnstr(
+            row,
+            column,
+            text,
+            available_width,
+            DEFAULT_ATTR if attr is None else attr,
+        )
+
+
+def _init_colors(screen) -> None:
+    global DEFAULT_ATTR
+
+    if not curses.has_colors():
+        return
+
+    try:
+        curses.start_color()
+        curses.use_default_colors()
+        curses.init_pair(1, -1, -1)
+        DEFAULT_ATTR = curses.color_pair(1)
+        screen.bkgdset(" ", DEFAULT_ATTR)
+    except curses.error:
+        DEFAULT_ATTR = curses.A_NORMAL
+
+
+def _attr(attr: int) -> int:
+    return DEFAULT_ATTR | attr
 
 
 def _set_cursor(visible: bool) -> None:
