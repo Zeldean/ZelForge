@@ -41,6 +41,26 @@ zeltask edit <task-id> --title "Write task service"
 zeltask done <task-id>
 zeltask cancel <task-id>
 zeltask reopen <task-id>
+zeltask tui
+```
+
+## Demo TUI
+
+`zeltask tui` opens a small curses interface over the same task services used by
+the CLI. It can browse active or all tasks, show details for the selected task,
+create a new task, and change task status.
+
+Controls:
+
+```text
+up/down or j/k  select task
+tab             switch active/all tasks
+a               add task
+d               mark selected task done
+c               cancel selected task
+o               reopen selected task
+r               refresh
+q               quit
 ```
 
 ## Notes From Old Attempts

@@ -143,6 +143,14 @@ def reopen(task_ref: str) -> None:
     typer.echo(f"reopened task {task['id'][:8]}: {task['title']}")
 
 
+@cli.command()
+def tui() -> None:
+    """Open the interactive task TUI."""
+    from .tui import run
+
+    run()
+
+
 def _format_task_line(task: dict) -> str:
     tags = ",".join(task.get("tags", []))
     tag_text = f" [{tags}]" if tags else ""
