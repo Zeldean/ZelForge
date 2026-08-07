@@ -34,6 +34,7 @@ generate recurring or repeated tasks from blueprints
 ```bash
 zeltask add "Write timer service"
 zeltask add "Index journal vault" --priority high --tag journal --tag index
+zeltask add "Plan career work" --priority 3 --domain career
 zeltask list
 zeltask list --all
 zeltask show <task-id>
@@ -70,3 +71,26 @@ commands. Those concepts are worth keeping, but the new version should use the
 shared ZelForge config, paths, and app-layer structure.
 
 Blueprints and recurring tasks are planned for later.
+
+Priorities are defined by the task model in code:
+
+```text
+0 none
+1 low
+2 medium
+3 high
+4 urgent
+```
+
+`--priority` accepts either the number or label. New task records store the
+normalized number.
+
+Domains are shared user state managed by the root `zel` command:
+
+```bash
+zel domains list
+zel domains add career --name "Career Work"
+zel domains default career
+```
+
+When a default domain is configured, new tasks use it if `--domain` is omitted.

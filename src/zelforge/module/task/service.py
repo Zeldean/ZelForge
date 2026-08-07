@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from zelforge.core.domains import get_default_domain
+
 from . import storage
 from .models import DEFAULT_PRIORITY, DEFAULT_STATUS, validate_priority, validate_status
 
@@ -31,7 +33,7 @@ def create_task(
         "status": DEFAULT_STATUS,
         "priority": validate_priority(priority),
         "tags": tags or [],
-        "domain": domain.strip(),
+        "domain": _resolve_domain(domain),
         "created_at": now,
         "updated_at": now,
         "completed_at": None,
@@ -154,6 +156,10 @@ def _set_status(task: dict, status: str) -> None:
     else:
         task["completed_at"] = None
         task["cancelled_at"] = None
+
+
+def _resolve_domain(domain: str) -> str:
+    return domain.strip() or get_default_domain() or ""
 
 
 def _require_text(value: str, label: str) -> None:

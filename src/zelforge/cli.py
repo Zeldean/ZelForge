@@ -6,6 +6,7 @@ import typer
 
 from . import __version__
 from .core import config
+from .core import domains as domain_store
 from .core.paths import get_base_path_info
 from .core.storage import ensure_base_dirs
 
@@ -13,8 +14,10 @@ from .core.storage import ensure_base_dirs
 cli = typer.Typer(help="ZelForge CLI.")
 paths_app = typer.Typer(help="Manage module paths.")
 config_app = typer.Typer(help="Manage ZelForge settings.")
+domains_app = typer.Typer(help="Manage shared domains.")
 cli.add_typer(paths_app, name="paths")
 cli.add_typer(config_app, name="config")
+cli.add_typer(domains_app, name="domains")
 
 
 MODULES = [
@@ -62,6 +65,7 @@ def init(yes: bool = typer.Option(False, "--yes", "-y", help="Accept defaults.")
 
     ensure_base_dirs()
     config.init_config()
+    domain_store.init_domains()
 
     typer.echo("Initialized ZelForge.")
 
@@ -176,6 +180,135 @@ def unset_setting(key: str) -> None:
         return
 
     typer.echo(f"config {key} was not set")
+
+
+@domains_app.callback(invoke_without_command=True)
+def domains_root(ctx: typer.Context) -> None:
+    """List shared domains."""
+    if ctx.invoked_subcommand is None:
+        _list_domains()
+
+
+@domains_app.command("list")
+def list_domains(
+    all_domains: bool = typer.Option(False, "--all", "-a", help="Show inactive domains."),
+) -> None:
+    """List shared domains."""
+    _list_domains(include_inactive=all_domains)
+
+
+@domains_app.command("add")
+def add_domain(
+    key: str,
+    name: str | None = typer.Option(None, "--name", "-n", help="Display name."),
+    description: str = typer.Option("", "--description", "-d", help="Description."),
+) -> None:
+    """Add a shared domain."""
+    try:
+        domain = domain_store.add_domain(
+            key=key,
+            name=name,
+            description=description,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(f"added domain {domain['key']}: {domain['name']}")
+
+
+@domains_app.command("rename")
+def rename_domain(
+    key: str,
+    new_key: str,
+    name: str | None = typer.Option(None, "--name", "-n", help="New display name."),
+) -> None:
+    """Rename a shared domain key."""
+    try:
+        domain = domain_store.rename_domain(key, new_key, name=name)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(f"renamed domain {key} -> {domain['key']}")
+
+
+@domains_app.command("deactivate")
+def deactivate_domain(key: str) -> None:
+    """Mark a domain inactive."""
+    try:
+        domain = domain_store.set_domain_active(key, False)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(f"deactivated domain {domain['key']}")
+
+
+@domains_app.command("activate")
+def activate_domain(key: str) -> None:
+    """Mark a domain active."""
+    try:
+        domain = domain_store.set_domain_active(key, True)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(f"activated domain {domain['key']}")
+
+
+@domains_app.command("remove")
+def remove_domain(
+    key: str,
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
+) -> None:
+    """Remove a shared domain."""
+    if not yes and not typer.confirm(f"Remove domain {key}?", default=False):
+        typer.echo("Remove cancelled.")
+        raise typer.Exit()
+
+    try:
+        removed = domain_store.remove_domain(key)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    if removed:
+        typer.echo(f"removed domain {key}")
+        return
+
+    typer.echo(f"domain {key} was not set")
+
+
+@domains_app.command("default")
+def set_default_domain(key: str | None = typer.Argument(None)) -> None:
+    """Show or set the default domain."""
+    if key is None:
+        typer.echo(domain_store.get_default_domain() or "-")
+        return
+
+    try:
+        default_domain = domain_store.set_default_domain(key)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(f"default domain {default_domain}")
+
+
+@domains_app.command("clear-default")
+def clear_default_domain() -> None:
+    """Clear the default domain."""
+    domain_store.set_default_domain(None)
+    typer.echo("cleared default domain")
+
+
+def _list_domains(include_inactive: bool = False) -> None:
+    data = domain_store.load_domains_data()
+    default_domain = data.get("default_domain")
+    domains = domain_store.list_domains(include_inactive=include_inactive)
+    if not domains:
+        typer.echo("no domains configured")
+        return
+
+    for domain in domains:
+        marker = "*" if domain.get("key") == default_domain else " "
+        active = "" if domain.get("active") is not False else " inactive"
+        typer.echo(f"{marker} {domain['key']:<16} {domain['name']}{active}")
 
 
 def _echo_core_paths() -> None:
