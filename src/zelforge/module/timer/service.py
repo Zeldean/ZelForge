@@ -71,6 +71,7 @@ def save_closed_sessions() -> dict:
     ]
 
     if not promotable:
+        storage.write_log_events(events)
         return {
             "saved": 0,
             "skipped_invalid": len(invalid_sessions),

@@ -17,6 +17,7 @@ from zelforge.core.storage import (
 
 STATE_NAME = "timer"
 LOG_FILE_NAME = "log.txt"
+LOG_EVENT_KEYS = ("event", "timer_id", "title", "created_at", "session_id")
 
 # Each storage object maps to one JSON file with the same top-level array name.
 _OBJECTS = {
@@ -142,29 +143,47 @@ def add_session(
 def append_log_event(event: dict) -> dict:
     """Append one JSON event to the timer text log."""
     ensure_parent_dir(get_log_path())
+    normalized = normalize_log_event(event)
 
     with get_log_path().open("a", encoding="utf-8") as file:
-        file.write(json.dumps(event, sort_keys=True))
+        file.write(json.dumps(normalized, sort_keys=True))
         file.write("\n")
 
-    return event
+    return normalized
 
 
 def read_log_events() -> list[dict]:
-    """Read timer log events from the text log."""
+    """Read timer log events from the text log.
+
+    The log is intentionally forgiving: any JSON object in the file can become
+    an event, even when blank text, notes, or multiple objects appear on one
+    line. Unknown keys are ignored.
+    """
     log_path = get_log_path()
     if not log_path.exists():
         return []
 
     events = []
-    for line_number, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), 1):
-        if not line.strip():
-            continue
+    decoder = json.JSONDecoder()
+    text = log_path.read_text(encoding="utf-8")
+    position = 0
+    while position < len(text):
+        start = text.find("{", position)
+        if start == -1:
+            break
 
         try:
-            events.append(json.loads(line))
-        except json.JSONDecodeError as error:
-            raise ValueError(f"Invalid timer log line {line_number}: {error.msg}") from error
+            value, end = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            position = start + 1
+            continue
+
+        if isinstance(value, dict):
+            event = normalize_log_event(value)
+            if event:
+                events.append(event)
+
+        position = end
 
     return events
 
@@ -175,10 +194,28 @@ def write_log_events(events: list[dict]) -> Path:
 
     with get_log_path().open("w", encoding="utf-8") as file:
         for event in events:
-            file.write(json.dumps(event, sort_keys=True))
+            normalized = normalize_log_event(event)
+            if not normalized:
+                continue
+
+            file.write(json.dumps(normalized, sort_keys=True))
             file.write("\n")
 
     return get_log_path()
+
+
+def normalize_log_event(event: dict) -> dict:
+    """Return only known timer log keys with empty values removed."""
+    normalized = {
+        key: event[key]
+        for key in LOG_EVENT_KEYS
+        if key in event and event[key] is not None
+    }
+
+    if normalized.get("event") not in {"start", "stop"}:
+        return {}
+
+    return normalized
 
 
 def _get_object_config(name: str) -> dict:
