@@ -8,6 +8,7 @@ from . import service
 
 HELP_TEXT = "q quit  r refresh  up/down select  enter/s start or stop"
 DEFAULT_ATTR = curses.A_NORMAL
+REFRESH_TIMEOUT_MS = 1000
 
 
 def run() -> None:
@@ -19,7 +20,7 @@ def _run(screen) -> None:
     _init_colors(screen)
     _set_cursor(False)
     screen.keypad(True)
-    screen.timeout(1000)
+    screen.timeout(REFRESH_TIMEOUT_MS)
     state = {
         "selected": 0,
         "offset": 0,
@@ -196,6 +197,7 @@ def _prompt(screen, label: str, default: str = "") -> str | None:
     row = height - 1
     _add_line(screen, row, 0, " " * max(width - 1, 0))
     _add_line(screen, row, 0, prompt)
+    screen.timeout(-1)
     _set_cursor(True)
     curses.echo()
 
@@ -206,6 +208,7 @@ def _prompt(screen, label: str, default: str = "") -> str | None:
     finally:
         curses.noecho()
         _set_cursor(False)
+        screen.timeout(REFRESH_TIMEOUT_MS)
 
     text = value.decode("utf-8").strip()
     return text or default
