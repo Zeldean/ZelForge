@@ -11,7 +11,7 @@ def start_timer(timer_ref: str, title: str | None = None) -> dict:
     timer = find_timer(timer_ref)
     active = get_active_session_for_timer(timer["id"])
     if active:
-        raise ValueError(f"Timer already active: {active['title']}")
+        stop_timer(timer["id"])
 
     event = {
         "event": "start",
