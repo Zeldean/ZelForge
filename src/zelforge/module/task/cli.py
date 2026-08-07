@@ -3,6 +3,7 @@ from __future__ import annotations
 import typer
 
 from . import service
+from .models import get_priority_label
 
 
 cli = typer.Typer(help="Task commands.")
@@ -75,7 +76,7 @@ def show(task_ref: str) -> None:
     typer.echo(f"id          {task['id']}")
     typer.echo(f"title       {task['title']}")
     typer.echo(f"status      {task['status']}")
-    typer.echo(f"priority    {task['priority']}")
+    typer.echo(f"priority    {get_priority_label(task.get('priority'))}")
     typer.echo(f"domain      {task.get('domain') or '-'}")
     typer.echo(f"tags        {', '.join(task.get('tags', [])) or '-'}")
     typer.echo(f"created_at  {task['created_at']}")
@@ -157,7 +158,8 @@ def _format_task_line(task: dict) -> str:
     domain = task.get("domain")
     domain_text = f" ({domain})" if domain else ""
     return (
-        f"{task['id'][:8]}  {task['status']:<9} {task['priority']:<7} "
+        f"{task['id'][:8]}  {task['status']:<9} "
+        f"{get_priority_label(task.get('priority')):<7} "
         f"{task['title']}{domain_text}{tag_text}"
     )
 

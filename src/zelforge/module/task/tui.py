@@ -4,6 +4,7 @@ import curses
 import textwrap
 
 from . import service
+from .models import get_priority_label
 
 
 HELP_TEXT = "q quit  r refresh  a add  d done  c cancel  o reopen  tab active/all"
@@ -97,7 +98,8 @@ def _draw_task_list(
 
         selected = index == state["selected"]
         marker = ">" if selected else " "
-        line = f"{marker} {_status_icon(task)} {task['priority']:<7} {task['title']}"
+        priority = get_priority_label(task.get("priority"))
+        line = f"{marker} {_status_icon(task)} {priority:<7} {task['title']}"
         attr = _attr(curses.A_BOLD if selected else curses.A_NORMAL)
         _add_line(screen, row, 0, _truncate(line, list_width - 1), attr)
         row += 1
@@ -120,7 +122,7 @@ def _draw_task_detail(
         "",
         f"id        {task['id'][:8]}",
         f"status    {task['status']}",
-        f"priority  {task['priority']}",
+        f"priority  {get_priority_label(task.get('priority'))}",
         f"domain    {task.get('domain') or '-'}",
         f"tags      {', '.join(task.get('tags', [])) or '-'}",
         "",

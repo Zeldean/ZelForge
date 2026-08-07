@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from . import storage
-from .models import DEFAULT_STATUS, validate_status
+from .models import DEFAULT_PRIORITY, DEFAULT_STATUS, validate_priority, validate_status
 
 
 def init() -> dict[str, str]:
@@ -15,7 +15,7 @@ def init() -> dict[str, str]:
 def create_task(
     title: str,
     description: str = "",
-    priority: str = "medium",
+    priority: int | str = DEFAULT_PRIORITY,
     tags: list[str] | None = None,
     domain: str = "",
 ) -> dict:
@@ -29,7 +29,7 @@ def create_task(
         "title": title.strip(),
         "description": description.strip(),
         "status": DEFAULT_STATUS,
-        "priority": priority.strip() or "medium",
+        "priority": validate_priority(priority),
         "tags": tags or [],
         "domain": domain.strip(),
         "created_at": now,
@@ -67,7 +67,7 @@ def update_task(
     task_ref: str,
     title: str | None = None,
     description: str | None = None,
-    priority: str | None = None,
+    priority: int | str | None = None,
     domain: str | None = None,
     tags: list[str] | None = None,
     status: str | None = None,
@@ -84,7 +84,7 @@ def update_task(
         task["description"] = description.strip()
 
     if priority is not None:
-        task["priority"] = priority.strip() or "medium"
+        task["priority"] = validate_priority(priority)
 
     if domain is not None:
         task["domain"] = domain.strip()
