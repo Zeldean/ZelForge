@@ -2,46 +2,122 @@
 
 ## Purpose
 
-The media module helps manage local movie and series files.
+The media module manages local media libraries under one root folder.
 
-It should focus on practical library maintenance: scanning folders, cleaning
-file names, generating markdown notes, and preparing links or metadata for the
-journal vault.
-
-## Intended Flow
+The default layout is:
 
 ```text
-configure media library paths
-scan movie or series folders
-preview file rename operations
-apply safe rename operations
-generate markdown notes
-export useful links or metadata
+~/Media/
+  aud/
+  doc/
+  img/
+  vid/
+    Movies/
+    Shows/
 ```
 
-## Important Ideas
+The root can be changed during init, and paths are saved through the shared
+ZelForge path config.
 
-- Media libraries should be configured as module paths, such as
-  `media.movies` or `media.series`.
-- Destructive file operations should support dry-run previews.
-- Movie and series workflows are related but not identical.
-- Generated notes may later connect to the journal vault.
-- Metadata caches should live under the cache or state directory.
-
-## Possible Commands
+## Commands
 
 ```bash
-zel paths set media.movies ~/Media/Movies
-zel paths set media.series ~/Media/Series
+zelmedia init
+zelmedia init /home/zeldean/Media
+zelmedia info
+zelmedia paths list
 zelmedia scan
-zelmedia clean --dry-run
-zelmedia clean
-zelmedia series clean --dry-run
-zelmedia notes --out ~/Vault/Media
+zelmedia move ~/Downloads ~/Media/vid/Movies --dry-run
 ```
 
-## Notes From Old Attempts
+Movie commands:
 
-The old media app had folder scanning, movie renaming, series renaming, metadata
-lookup, markdown note generation, and link exports. The new version should keep
-the safety-first pieces and make path configuration explicit.
+```bash
+zelmedia movies scan
+zelmedia movies rename --dry-run
+zelmedia movies rename
+zelmedia movies list
+```
+
+Series commands:
+
+```bash
+zelmedia series rename --dry-run
+zelmedia series rename --fix-structure
+```
+
+## Paths
+
+Media paths are stored as shared config keys:
+
+```text
+media.root
+media.audio
+media.documents
+media.images
+media.video
+media.movies
+media.shows
+```
+
+Default shows path:
+
+```text
+$MEDIA_DIR/vid/Shows
+```
+
+Default movie path:
+
+```text
+$MEDIA_DIR/vid/Movies
+```
+
+Most commands also accept runtime paths with `--path` or explicit source and
+destination arguments.
+
+## Movies
+
+Movie renaming should be metadata-first. The renamer uses `TMDB_API_KEY` when
+available and renames from the database result instead of trying to clean scene
+release names with large bad-word lists.
+
+When metadata is found, files are renamed to:
+
+```text
+Movie_Title_(YEAR).ext
+```
+
+Metadata is stored in:
+
+```text
+~/.local/state/zelforge/media/movies.json
+```
+
+If no metadata is found or no API key is configured, the movie is skipped rather
+than guessed.
+
+## Series
+
+Series renaming is still mostly local filename parsing for now.
+
+Expected structure:
+
+```text
+Shows/
+  Series_Name/
+    Season_01/
+      Series_Name_S01E01.mkv
+```
+
+The renamer can:
+
+- normalize series folder names
+- normalize season folders to `Season_XX`
+- rename episodes to `Series_Name_S01E01.ext`
+- optionally move root-level episodes into season folders with `--fix-structure`
+
+## Notes
+
+This is the first new-architecture media slice. Old features such as Markdown
+note generation and YTS link export are still reference material until the
+movie metadata store settles.
