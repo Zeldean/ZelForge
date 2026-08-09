@@ -37,6 +37,9 @@ zelmedia movies scan
 zelmedia movies rename --dry-run
 zelmedia movies rename
 zelmedia movies list
+zelmedia movies notes --out ~/Vault/Media
+zelmedia movies links
+zelmedia movies rec-links --out recs.txt
 ```
 
 Series commands:
@@ -96,6 +99,10 @@ Metadata is stored in:
 If no metadata is found or no API key is configured, the movie is skipped rather
 than guessed.
 
+Stored metadata can also generate Markdown notes and YTS-style links. These
+features read from `movies.json`; they do not rescan or rename files by
+themselves.
+
 ## Series
 
 Series renaming is still mostly local filename parsing for now.
@@ -118,6 +125,6 @@ The renamer can:
 
 ## Notes
 
-This is the first new-architecture media slice. Old features such as Markdown
-note generation and YTS link export are still reference material until the
-movie metadata store settles.
+This is the first new-architecture media slice. The movie metadata store is now
+the center of the movie workflow; more fields and better matching can be added
+without changing the CLI shape.

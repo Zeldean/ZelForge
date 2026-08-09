@@ -148,6 +148,31 @@ def list_movies() -> None:
         typer.echo(f"{movie.get('title', '-'):<40} {year}  {movie.get('path', '-')}")
 
 
+@movies_app.command("notes")
+def generate_notes(
+    output: str = typer.Option(..., "--out", "-o", help="Output notes directory."),
+) -> None:
+    """Generate Markdown notes from stored movie metadata."""
+    actions = service.generate_movie_notes(output)
+    _echo_actions(actions)
+
+
+@movies_app.command("links")
+def links(
+    output: str | None = typer.Option(None, "--out", "-o", help="Write links to a file."),
+) -> None:
+    """Print YTS links for stored movies."""
+    _echo_links(service.movie_links(), output)
+
+
+@movies_app.command("rec-links")
+def rec_links(
+    output: str | None = typer.Option(None, "--out", "-o", help="Write links to a file."),
+) -> None:
+    """Print YTS links for recommended movies not already stored."""
+    _echo_links(service.movie_links(recommended=True), output)
+
+
 @series_app.command("rename")
 def rename_series(
     folder: str | None = typer.Option(None, "--path", "-p", help="Shows folder."),
@@ -181,6 +206,17 @@ def _echo_actions(actions: list[service.FileAction], dry_run: bool = False) -> N
         target = f" -> {action.target}" if action.target else ""
         reason = f" ({action.reason})" if action.reason else ""
         typer.echo(f"{prefix}{action.action}: {action.source}{target} [{action.status}]{reason}")
+
+
+def _echo_links(links: list[tuple[str, str, str]], output: str | None = None) -> None:
+    lines = [url for _, _, url in links]
+    text = "\n".join(lines)
+    if output:
+        Path(output).expanduser().write_text(text, encoding="utf-8")
+        typer.echo(f"wrote {len(lines)} links to {output}")
+        return
+
+    typer.echo(text)
 
 
 if __name__ == "__main__":

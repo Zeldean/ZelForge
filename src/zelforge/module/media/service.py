@@ -6,6 +6,7 @@ import re
 import shutil
 import urllib.parse
 import urllib.request
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -191,6 +192,7 @@ def identify_movie(file_path: Path, refresh: bool = False) -> dict | None:
         "runtime": metadata.get("runtime"),
         "genres": metadata.get("genres", []),
         "poster_path": metadata.get("poster_path"),
+        "similar": metadata.get("similar", []),
         "matched_query": candidate["title"],
         "matched_year": candidate.get("year"),
         "updated_at": _now(),
@@ -241,10 +243,11 @@ def lookup_movie(title: str, year: int | None = None, refresh: bool = False) -> 
     best = results[0]
     details = _tmdb_get(
         f"movie/{best['id']}",
-        {"append_to_response": "external_ids"},
+        {"append_to_response": "external_ids,recommendations"},
         api_key,
     )
     release_date = details.get("release_date") or best.get("release_date") or ""
+    similar = details.get("recommendations", {}).get("results", [])
     return {
         "tmdb_id": details.get("id") or best.get("id"),
         "title": details.get("title") or best.get("title") or title,
@@ -256,7 +259,68 @@ def lookup_movie(title: str, year: int | None = None, refresh: bool = False) -> 
         "genres": [genre["name"] for genre in details.get("genres", [])],
         "poster_path": details.get("poster_path") or best.get("poster_path"),
         "imdb_id": details.get("external_ids", {}).get("imdb_id"),
+        "similar": [
+            {
+                "title": movie.get("title"),
+                "release_date": movie.get("release_date"),
+            }
+            for movie in similar
+            if movie.get("title")
+        ],
     }
+
+
+def generate_movie_notes(output: str) -> list[FileAction]:
+    """Generate one Markdown note per stored movie."""
+    output_dir = Path(output).expanduser()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    actions = []
+
+    for movie in storage.load_movies_data()["movies"]:
+        title = movie.get("title")
+        year = movie.get("year") or "????"
+        if not title:
+            continue
+
+        note_path = output_dir / f"{clean_name_part(title)}_({year}).md"
+        note_path.write_text(_movie_note(movie), encoding="utf-8")
+        actions.append(FileAction("write", note_path, status="done"))
+
+    return actions
+
+
+def movie_links(recommended: bool = False) -> list[tuple[str, str, str]]:
+    """Return YTS-style links for stored or recommended movies."""
+    movies = storage.load_movies_data()["movies"]
+    if not recommended:
+        return [
+            (
+                movie.get("title", ""),
+                str(movie.get("year") or "????"),
+                _yts_url(movie.get("title", ""), movie.get("year") or "????"),
+            )
+            for movie in movies
+            if movie.get("title")
+        ]
+
+    owned = {
+        (movie.get("title", "").lower(), str(movie.get("year") or "????"))
+        for movie in movies
+    }
+    seen = set()
+    links = []
+    for movie in movies:
+        for similar in movie.get("similar", []):
+            title = similar.get("title", "")
+            year = _year_from_release_date(similar.get("release_date"))
+            key = (title.lower(), str(year))
+            if not title or key in owned or key in seen:
+                continue
+
+            seen.add(key)
+            links.append((title, str(year), _yts_url(title, year)))
+
+    return links
 
 
 def rename_series_library(
@@ -435,6 +499,52 @@ def _tmdb_get(endpoint: str, params: dict[str, str], api_key: str) -> dict:
     request = urllib.request.Request(url, headers={"User-Agent": "ZelForge/0.1"})
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _movie_note(movie: dict) -> str:
+    title = movie.get("title", "Untitled")
+    year = movie.get("year") or "????"
+    genres = movie.get("genres", [])
+    poster_path = movie.get("poster_path") or ""
+    poster = f"https://image.tmdb.org/t/p/original{poster_path}" if poster_path else ""
+    similar = movie.get("similar", [])
+    similar_lines = [
+        f"- [[{clean_name_part(item['title'])}_({_year_from_release_date(item.get('release_date'))})|"
+        f"{item['title']} ({_year_from_release_date(item.get('release_date'))})]]"
+        for item in similar
+        if item.get("title")
+    ]
+
+    return (
+        "---\n"
+        "cssclasses: mediaNote\n"
+        "tags:\n"
+        "  - media/movie\n"
+        f"title: {title} ({year})\n"
+        f"yearReleased: {year}\n"
+        f"runtime: {movie.get('runtime') or ''}\n"
+        f"genres: {json.dumps(genres)}\n"
+        f"poster: {poster}\n"
+        "---\n"
+        "# Synopsis\n"
+        f"{movie.get('overview') or ''}\n\n"
+        "---\n"
+        "# More Like This\n"
+        f"{chr(10).join(similar_lines) if similar_lines else '- TODO'}\n"
+    )
+
+
+def _yts_url(title: str, year: int | str) -> str:
+    return f"https://yts.mx/movies/{_slugify(title)}-{year}"
+
+
+def _slugify(value: str) -> str:
+    text = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
+    return re.sub(r"[^\w]+", "-", text.lower()).strip("-")
+
+
+def _year_from_release_date(value: str | None) -> int | str:
+    return int(value[:4]) if value and value[:4].isdigit() else "????"
 
 
 def _dedupe_target(target: Path) -> Path:
