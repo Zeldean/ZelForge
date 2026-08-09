@@ -26,6 +26,7 @@ zelmedia init
 zelmedia init /home/zeldean/Media
 zelmedia info
 zelmedia paths list
+zelmedia paths set shows ~/Media/vid/Shows
 zelmedia scan
 zelmedia move ~/Downloads ~/Media/vid/Movies --dry-run
 ```

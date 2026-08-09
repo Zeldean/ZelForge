@@ -5,6 +5,8 @@ from pathlib import Path
 
 import typer
 
+from zelforge.core import config
+
 from . import service
 from . import storage
 
@@ -95,9 +97,36 @@ def list_paths() -> None:
     _list_paths()
 
 
+@paths_app.command("get")
+def get_path(key: str) -> None:
+    """Show one media path."""
+    normalized = _media_path_key(key)
+    value = config.get_path(normalized)
+    if value is None:
+        value = str(service.get_media_path(normalized))
+
+    typer.echo(value)
+
+
+@paths_app.command("set")
+def set_path(key: str, value: str) -> None:
+    """Set one media path."""
+    normalized = _media_path_key(key)
+    try:
+        config.set_path(normalized, value)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(f"set {normalized} = {Path(value).expanduser()}")
+
+
 def _list_paths() -> None:
     for key, path in service.get_media_paths().items():
         typer.echo(f"{key:<16} {path}")
+
+
+def _media_path_key(key: str) -> str:
+    return key if key.startswith("media.") else f"media.{key}"
 
 
 @movies_app.command("scan")
