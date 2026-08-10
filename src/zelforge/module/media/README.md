@@ -100,6 +100,11 @@ Metadata is stored in:
 If no metadata is found or no API key is configured, the movie is skipped rather
 than guessed.
 
+The matcher is intentionally conservative. When the filename already includes a
+year, the TMDb result must match that year, and the title must be a strong match.
+Part, episode, and chapter markers are also checked so the renamer skips risky
+matches like the wrong sequel or a behind-the-scenes special.
+
 Stored metadata can also generate Markdown notes and YTS-style links. These
 features read from `movies.json`; they do not rescan or rename files by
 themselves.

@@ -9,6 +9,7 @@ import urllib.request
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,6 +20,8 @@ from .models import MEDIA_DIRS, MOVIE_READY_PATTERN, build_movie_filename, clean
 
 
 TMDB_API = "https://api.themoviedb.org/3"
+MIN_TITLE_SIMILARITY = 0.86
+MIN_TOKEN_OVERLAP = 0.80
 
 
 @dataclass
@@ -138,14 +141,14 @@ def rename_movies(
     actions = []
 
     for file_path in sorted(path for path in root.iterdir() if is_video_file(path)):
-        movie = identify_movie(file_path, refresh=refresh)
+        movie, reason = identify_movie(file_path, refresh=refresh)
         if not movie:
             actions.append(
                 FileAction(
                     "rename",
                     file_path,
                     status="skipped",
-                    reason="metadata not found",
+                    reason=reason or "metadata not found",
                 )
             )
             continue
@@ -170,14 +173,18 @@ def rename_movies(
     return actions
 
 
-def identify_movie(file_path: Path, refresh: bool = False) -> dict | None:
+def identify_movie(file_path: Path, refresh: bool = False) -> tuple[dict | None, str]:
     candidate = parse_movie_candidate(file_path)
     if not candidate:
-        return None
+        return None, "could not parse filename"
 
     metadata = lookup_movie(candidate["title"], candidate.get("year"), refresh=refresh)
     if not metadata:
-        return None
+        return None, "metadata not found"
+
+    match_error = validate_movie_match(candidate, metadata)
+    if match_error:
+        return None, match_error
 
     return {
         "id": str(uuid4()),
@@ -195,8 +202,10 @@ def identify_movie(file_path: Path, refresh: bool = False) -> dict | None:
         "similar": metadata.get("similar", []),
         "matched_query": candidate["title"],
         "matched_year": candidate.get("year"),
+        "match_score": metadata.get("match_score"),
+        "token_overlap": metadata.get("token_overlap"),
         "updated_at": _now(),
-    }
+    }, ""
 
 
 def parse_movie_candidate(file_path: Path) -> dict | None:
@@ -240,7 +249,10 @@ def lookup_movie(title: str, year: int | None = None, refresh: bool = False) -> 
     if not results:
         return None
 
-    best = results[0]
+    best = _best_movie_result(title, year, results)
+    if not best:
+        return None
+
     details = _tmdb_get(
         f"movie/{best['id']}",
         {"append_to_response": "external_ids,recommendations"},
@@ -259,6 +271,8 @@ def lookup_movie(title: str, year: int | None = None, refresh: bool = False) -> 
         "genres": [genre["name"] for genre in details.get("genres", [])],
         "poster_path": details.get("poster_path") or best.get("poster_path"),
         "imdb_id": details.get("external_ids", {}).get("imdb_id"),
+        "match_score": best.get("_match_score"),
+        "token_overlap": best.get("_token_overlap"),
         "similar": [
             {
                 "title": movie.get("title"),
@@ -321,6 +335,31 @@ def movie_links(recommended: bool = False) -> list[tuple[str, str, str]]:
             links.append((title, str(year), _yts_url(title, year)))
 
     return links
+
+
+def validate_movie_match(candidate: dict, metadata: dict) -> str | None:
+    """Return a skip reason when TMDb metadata is not a strong filename match."""
+    candidate_year = candidate.get("year")
+    metadata_year = metadata.get("year")
+    if candidate_year and metadata_year != candidate_year:
+        return f"year mismatch: {candidate_year} != {metadata_year}"
+
+    candidate_title = candidate["title"]
+    metadata_title = metadata.get("title") or ""
+    similarity = _title_similarity(candidate_title, metadata_title)
+    overlap = _token_overlap(candidate_title, metadata_title)
+    if similarity < MIN_TITLE_SIMILARITY and overlap < MIN_TOKEN_OVERLAP:
+        return (
+            "weak title match: "
+            f"{candidate_title!r} -> {metadata_title!r} "
+            f"score={similarity:.2f} overlap={overlap:.2f}"
+        )
+
+    discriminator_error = _validate_discriminators(candidate_title, metadata_title)
+    if discriminator_error:
+        return discriminator_error
+
+    return None
 
 
 def rename_series_library(
@@ -499,6 +538,128 @@ def _tmdb_get(endpoint: str, params: dict[str, str], api_key: str) -> dict:
     request = urllib.request.Request(url, headers={"User-Agent": "ZelForge/0.1"})
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _best_movie_result(title: str, year: int | None, results: list[dict]) -> dict | None:
+    scored = []
+    for result in results:
+        result_title = result.get("title") or result.get("original_title") or ""
+        result_year = _year_from_release_date(result.get("release_date"))
+        if year and result_year != year:
+            continue
+
+        similarity = _title_similarity(title, result_title)
+        overlap = _token_overlap(title, result_title)
+        discriminator_error = _validate_discriminators(title, result_title)
+        if discriminator_error:
+            continue
+
+        if similarity < MIN_TITLE_SIMILARITY and overlap < MIN_TOKEN_OVERLAP:
+            continue
+
+        scored.append(
+            (
+                max(similarity, overlap),
+                result.get("popularity") or 0,
+                {
+                    **result,
+                    "_match_score": round(similarity, 3),
+                    "_token_overlap": round(overlap, 3),
+                },
+            )
+        )
+
+    if not scored:
+        return None
+
+    return sorted(scored, key=lambda item: (item[0], item[1]), reverse=True)[0][2]
+
+
+def _title_similarity(left: str, right: str) -> float:
+    return SequenceMatcher(None, _normalize_title(left), _normalize_title(right)).ratio()
+
+
+def _token_overlap(left: str, right: str) -> float:
+    left_tokens = set(_title_tokens(left))
+    right_tokens = set(_title_tokens(right))
+    if not left_tokens or not right_tokens:
+        return 0
+
+    return len(left_tokens & right_tokens) / max(len(left_tokens), len(right_tokens))
+
+
+def _validate_discriminators(left: str, right: str) -> str | None:
+    left_discriminators = _title_discriminators(left)
+    right_discriminators = _title_discriminators(right)
+    if left_discriminators != right_discriminators:
+        return (
+            "title marker mismatch: "
+            f"{sorted(left_discriminators)} != {sorted(right_discriminators)}"
+        )
+
+    return None
+
+
+def _normalize_title(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
+    normalized = normalized.lower()
+    normalized = normalized.replace("&", " and ")
+    normalized = normalized.replace("'", "").replace("’", "")
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _title_tokens(value: str) -> list[str]:
+    return [token for token in _normalize_title(value).split() if token]
+
+
+def _title_discriminators(value: str) -> set[str]:
+    tokens = _title_tokens(value)
+    discriminators = set()
+    consumed_indexes = set()
+    roman = {
+        "i": "1",
+        "ii": "2",
+        "iii": "3",
+        "iv": "4",
+        "v": "5",
+        "vi": "6",
+        "vii": "7",
+        "viii": "8",
+        "ix": "9",
+        "x": "10",
+    }
+    number_words = {
+        "one": "1",
+        "two": "2",
+        "three": "3",
+        "four": "4",
+        "five": "5",
+        "six": "6",
+        "seven": "7",
+        "eight": "8",
+        "nine": "9",
+        "ten": "10",
+    }
+
+    for index, token in enumerate(tokens[:-1]):
+        next_token = tokens[index + 1]
+        if token in {"part", "episode", "chapter"} and (
+            next_token.isdigit() or next_token in roman or next_token in number_words
+        ):
+            number = (
+                next_token
+                if next_token.isdigit()
+                else roman.get(next_token, number_words.get(next_token, next_token))
+            )
+            discriminators.add(f"{token}:{number}")
+            consumed_indexes.add(index + 1)
+
+    for index, token in enumerate(tokens):
+        if index not in consumed_indexes and token.isdigit():
+            discriminators.add(token)
+
+    return discriminators
 
 
 def _movie_note(movie: dict) -> str:

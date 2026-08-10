@@ -33,6 +33,8 @@ def is_video_file(path: Path) -> bool:
 
 def clean_name_part(value: str) -> str:
     cleaned = value.strip()
+    cleaned = cleaned.replace("'", "").replace("’", "")
+    cleaned = cleaned.replace("&", " and ")
     cleaned = re.sub(r"\[[^\]]*\]|\([^)]*\)|\{[^}]*\}", "", cleaned)
     cleaned = re.sub(r"\s+", "_", cleaned)
     cleaned = re.sub(r"[^\w\-]", "_", cleaned)
