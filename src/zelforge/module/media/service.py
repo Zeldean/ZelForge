@@ -178,9 +178,9 @@ def identify_movie(file_path: Path, refresh: bool = False) -> tuple[dict | None,
     if not candidate:
         return None, "could not parse filename"
 
-    metadata = lookup_movie(candidate["title"], candidate.get("year"), refresh=refresh)
+    metadata, reason = lookup_movie(candidate["title"], candidate.get("year"), refresh=refresh)
     if not metadata:
-        return None, "metadata not found"
+        return None, reason or "metadata not found"
 
     match_error = validate_movie_match(candidate, metadata)
     if match_error:
@@ -232,26 +232,37 @@ def parse_movie_candidate(file_path: Path) -> dict | None:
     return {"title": title, "year": year}
 
 
-def lookup_movie(title: str, year: int | None = None, refresh: bool = False) -> dict | None:
+def lookup_movie(
+    title: str,
+    year: int | None = None,
+    refresh: bool = False,
+) -> tuple[dict | None, str]:
     api_key = os.getenv("TMDB_API_KEY")
     if not api_key:
-        return None
+        return None, "TMDB_API_KEY is not configured"
 
-    search = _tmdb_get(
-        "search/movie",
-        {
-            "query": title,
-            **({"year": str(year)} if year else {}),
-        },
-        api_key,
-    )
-    results = search.get("results", [])
-    if not results:
-        return None
+    last_reason = ""
+    for query in _movie_search_queries(title):
+        search = _tmdb_get(
+            "search/movie",
+            {
+                "query": query,
+                **({"year": str(year)} if year else {}),
+            },
+            api_key,
+        )
+        results = search.get("results", [])
+        if not results:
+            last_reason = "metadata not found"
+            continue
 
-    best = _best_movie_result(title, year, results)
-    if not best:
-        return None
+        best, reason = _best_movie_result(title, year, results)
+        if best:
+            break
+
+        last_reason = reason
+    else:
+        return None, last_reason or "metadata not found"
 
     details = _tmdb_get(
         f"movie/{best['id']}",
@@ -281,7 +292,7 @@ def lookup_movie(title: str, year: int | None = None, refresh: bool = False) -> 
             for movie in similar
             if movie.get("title")
         ],
-    }
+    }, ""
 
 
 def generate_movie_notes(output: str) -> list[FileAction]:
@@ -540,21 +551,56 @@ def _tmdb_get(endpoint: str, params: dict[str, str], api_key: str) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
-def _best_movie_result(title: str, year: int | None, results: list[dict]) -> dict | None:
+def _movie_search_queries(title: str) -> list[str]:
+    queries = [title]
+    normalized = _normalize_title(title)
+    if normalized.endswith(" the movie"):
+        queries.append(title[: -len(" the movie")].strip())
+    elif normalized.endswith(" movie"):
+        queries.append(title[: -len(" movie")].strip())
+
+    seen = set()
+    unique_queries = []
+    for query in queries:
+        key = _normalize_title(query)
+        if key and key not in seen:
+            unique_queries.append(query)
+            seen.add(key)
+
+    return unique_queries
+
+
+def _best_movie_result(
+    title: str,
+    year: int | None,
+    results: list[dict],
+) -> tuple[dict | None, str]:
     scored = []
+    rejected = []
     for result in results:
         result_title = result.get("title") or result.get("original_title") or ""
         result_year = _year_from_release_date(result.get("release_date"))
         if year and result_year != year:
+            rejected.append(
+                (result_title, result_year, f"year mismatch: {year} != {result_year}")
+            )
             continue
 
         similarity = _title_similarity(title, result_title)
         overlap = _token_overlap(title, result_title)
         discriminator_error = _validate_discriminators(title, result_title)
         if discriminator_error:
+            rejected.append((result_title, result_year, discriminator_error))
             continue
 
         if similarity < MIN_TITLE_SIMILARITY and overlap < MIN_TOKEN_OVERLAP:
+            rejected.append(
+                (
+                    result_title,
+                    result_year,
+                    f"weak title match: score={similarity:.2f} overlap={overlap:.2f}",
+                )
+            )
             continue
 
         scored.append(
@@ -570,9 +616,13 @@ def _best_movie_result(title: str, year: int | None, results: list[dict]) -> dic
         )
 
     if not scored:
-        return None
+        if rejected:
+            title, result_year, reason = rejected[0]
+            return None, f"no safe metadata match: {title} ({result_year}) - {reason}"
 
-    return sorted(scored, key=lambda item: (item[0], item[1]), reverse=True)[0][2]
+        return None, "metadata not found"
+
+    return sorted(scored, key=lambda item: (item[0], item[1]), reverse=True)[0][2], ""
 
 
 def _title_similarity(left: str, right: str) -> float:
