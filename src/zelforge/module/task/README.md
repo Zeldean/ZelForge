@@ -45,11 +45,28 @@ zeltask reopen <task-id>
 zeltask tui
 ```
 
+Subtask commands:
+
+```bash
+zeltask sub add <task-id> "Draft service changes"
+zeltask sub list <task-id>
+zeltask sub list <task-id> --all
+zeltask sub edit <task-id> <subtask-id> --title "Draft CLI changes"
+zeltask sub done <task-id> <subtask-id>
+zeltask sub cancel <task-id> <subtask-id>
+zeltask sub reopen <task-id> <subtask-id>
+zeltask sub remove <task-id> <subtask-id>
+```
+
 ## Demo TUI
 
 `zeltask tui` opens a small curses interface over the same task services used by
 the CLI. It can browse active or all tasks, show details for the selected task,
 create a new task, and change task status.
+
+Subtasks are displayed in the selected task details. Parent tasks do not
+automatically change status when subtasks are completed; that workflow should
+remain explicit until recurring tasks and completion rules are designed.
 
 Controls:
 

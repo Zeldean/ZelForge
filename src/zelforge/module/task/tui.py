@@ -99,7 +99,10 @@ def _draw_task_list(
         selected = index == state["selected"]
         marker = ">" if selected else " "
         priority = get_priority_label(task.get("priority"))
-        line = f"{marker} {_status_icon(task)} {priority:<7} {task['title']}"
+        line = (
+            f"{marker} {_status_icon(task)} {priority:<7} "
+            f"{task['title']}{_subtask_summary(task.get('subtasks', []))}"
+        )
         attr = _attr(curses.A_BOLD if selected else curses.A_NORMAL)
         _add_line(screen, row, 0, _truncate(line, list_width - 1), attr)
         row += 1
@@ -128,6 +131,9 @@ def _draw_task_detail(
         "",
         "description",
         task.get("description") or "-",
+        "",
+        "subtasks",
+        *_subtask_lines(task.get("subtasks", [])),
     ]
 
     for line in lines:
@@ -209,6 +215,24 @@ def _status_icon(task: dict) -> str:
     if status == "cancelled":
         return "×"
     return "•"
+
+
+def _subtask_summary(subtasks: list[dict]) -> str:
+    if not subtasks:
+        return ""
+
+    done = sum(1 for subtask in subtasks if subtask.get("status") == "done")
+    return f" [{done}/{len(subtasks)}]"
+
+
+def _subtask_lines(subtasks: list[dict]) -> list[str]:
+    if not subtasks:
+        return ["-"]
+
+    return [
+        f"{_status_icon(subtask)} {subtask['title']}"
+        for subtask in subtasks
+    ]
 
 
 def _prompt(screen, label: str, default: str | None = None) -> str | None:

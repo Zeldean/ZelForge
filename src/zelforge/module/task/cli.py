@@ -7,6 +7,8 @@ from .models import get_priority_label
 
 
 cli = typer.Typer(help="Task commands.")
+subtasks_app = typer.Typer(help="Subtask commands.")
+cli.add_typer(subtasks_app, name="sub")
 
 
 @cli.callback(invoke_without_command=True)
@@ -82,6 +84,7 @@ def show(task_ref: str) -> None:
     typer.echo(f"created_at  {task['created_at']}")
     typer.echo(f"updated_at  {task['updated_at']}")
     typer.echo(f"description {task.get('description') or '-'}")
+    _echo_subtasks(task.get("subtasks", []))
 
 
 @cli.command()
@@ -144,6 +147,101 @@ def reopen(task_ref: str) -> None:
     typer.echo(f"reopened task {task['id'][:8]}: {task['title']}")
 
 
+@subtasks_app.command("add")
+def add_subtask(task_ref: str, title: str) -> None:
+    """Add a subtask to a task."""
+    try:
+        subtask = service.add_subtask(task_ref, title)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(f"created subtask {subtask['id'][:8]}: {subtask['title']}")
+
+
+@subtasks_app.command("list")
+def list_subtasks(
+    task_ref: str,
+    all_subtasks: bool = typer.Option(False, "--all", "-a", help="Show every status."),
+) -> None:
+    """List subtasks for a task."""
+    try:
+        subtasks = service.list_subtasks(task_ref, include_all=all_subtasks)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    if not subtasks:
+        typer.echo("no subtasks")
+        return
+
+    for subtask in subtasks:
+        typer.echo(_format_subtask_line(subtask))
+
+
+@subtasks_app.command("edit")
+def edit_subtask(
+    task_ref: str,
+    subtask_ref: str,
+    title: str | None = typer.Option(None, "--title", help="New subtask title."),
+    status: str | None = typer.Option(None, "--status", "-s", help="New subtask status."),
+) -> None:
+    """Edit an existing subtask."""
+    try:
+        subtask = service.update_subtask(
+            task_ref=task_ref,
+            subtask_ref=subtask_ref,
+            title=title,
+            status=status,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(f"updated subtask {subtask['id'][:8]}: {subtask['title']}")
+
+
+@subtasks_app.command("done")
+def done_subtask(task_ref: str, subtask_ref: str) -> None:
+    """Mark a subtask done."""
+    try:
+        subtask = service.update_subtask(task_ref, subtask_ref, status="done")
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(f"done subtask {subtask['id'][:8]}: {subtask['title']}")
+
+
+@subtasks_app.command("cancel")
+def cancel_subtask(task_ref: str, subtask_ref: str) -> None:
+    """Mark a subtask cancelled."""
+    try:
+        subtask = service.update_subtask(task_ref, subtask_ref, status="cancelled")
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(f"cancelled subtask {subtask['id'][:8]}: {subtask['title']}")
+
+
+@subtasks_app.command("reopen")
+def reopen_subtask(task_ref: str, subtask_ref: str) -> None:
+    """Mark a subtask active again."""
+    try:
+        subtask = service.update_subtask(task_ref, subtask_ref, status="active")
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(f"reopened subtask {subtask['id'][:8]}: {subtask['title']}")
+
+
+@subtasks_app.command("remove")
+def remove_subtask(task_ref: str, subtask_ref: str) -> None:
+    """Remove a subtask."""
+    try:
+        subtask = service.remove_subtask(task_ref, subtask_ref)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+    typer.echo(f"removed subtask {subtask['id'][:8]}: {subtask['title']}")
+
+
 @cli.command()
 def tui() -> None:
     """Open the interactive task TUI."""
@@ -157,11 +255,35 @@ def _format_task_line(task: dict) -> str:
     tag_text = f" [{tags}]" if tags else ""
     domain = task.get("domain")
     domain_text = f" ({domain})" if domain else ""
+    subtask_text = _subtask_summary(task.get("subtasks", []))
     return (
         f"{task['id'][:8]}  {task['status']:<9} "
         f"{get_priority_label(task.get('priority')):<7} "
-        f"{task['title']}{domain_text}{tag_text}"
+        f"{task['title']}{domain_text}{tag_text}{subtask_text}"
     )
+
+
+def _echo_subtasks(subtasks: list[dict]) -> None:
+    typer.echo("subtasks")
+    if not subtasks:
+        typer.echo("  -")
+        return
+
+    for subtask in subtasks:
+        typer.echo(f"  {_format_subtask_line(subtask)}")
+
+
+def _format_subtask_line(subtask: dict) -> str:
+    return f"{subtask['id'][:8]}  {subtask['status']:<9} {subtask['title']}"
+
+
+def _subtask_summary(subtasks: list[dict]) -> str:
+    if not subtasks:
+        return ""
+
+    done = sum(1 for subtask in subtasks if subtask.get("status") == "done")
+    total = len(subtasks)
+    return f" [{done}/{total}]"
 
 
 if __name__ == "__main__":
