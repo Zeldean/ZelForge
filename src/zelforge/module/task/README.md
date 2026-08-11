@@ -61,24 +61,29 @@ zeltask sub remove <task-id> <subtask-id>
 ## Demo TUI
 
 `zeltask tui` opens a small curses interface over the same task services used by
-the CLI. It can browse active or all tasks, show details for the selected task,
-create a new task, and change task status.
+the CLI. It has a ticket-style task list on the left and a detail panel on the
+right. It can browse active or all tasks, create tasks, edit titles, manage
+subtasks, and change task or subtask status.
 
-Subtasks are displayed in the selected task details. Parent tasks do not
-automatically change status when subtasks are completed; that workflow should
-remain explicit until recurring tasks and completion rules are designed.
+Subtasks are managed from the detail panel. Parent tasks do not automatically
+change status when subtasks are completed; that workflow should remain explicit
+until recurring tasks and completion rules are designed.
 
 Controls:
 
 ```text
-up/down or j/k  select task
-tab             switch active/all tasks
-a               add task
-d               mark selected task done
-c               cancel selected task
-o               reopen selected task
-r               refresh
-q               quit
+up/down or j/k    select focused item
+left/right or h/l switch task/subtask focus
+tab               switch active/all tasks
+a                 add task
+s                 add subtask to selected task
+e                 edit focused task/subtask title
+d                 mark focused task/subtask done
+c                 cancel focused task/subtask
+o                 reopen focused task/subtask
+x                 remove focused subtask
+r                 refresh
+q                 quit
 ```
 
 ## Notes From Old Attempts
