@@ -205,27 +205,13 @@ def _draw_detail_panel(
         _add_line(screen, row, left, "No sessions in this range")
         return
 
-    title_width = min(max([len(session["title"]) for session in sessions] + [5]), 32)
     include_date = not _is_single_day(state)
-    stop_width = 16 if include_date else 6
     for session in sessions:
-        if row >= top + height - 2:
+        if row + 3 >= top + height - 2:
             break
 
-        started = _format_time(session["started_at"], include_date=include_date)
-        stopped = (
-            "active"
-            if session["active"]
-            else _format_time(session["stopped_at"], include_date=include_date)
-        )
-        duration = _format_duration(session["duration_seconds"])
-        line = (
-            f"{_status_icon(session)} "
-            f"{session['title']:<{title_width}}  "
-            f"{started} -> {stopped:<{stop_width}}  {duration}"
-        )
-        _add_line(screen, row, left, _truncate(line, width))
-        row += 1
+        _draw_session_block(screen, session, row, left, width, include_date)
+        row += 5
 
     if row < top + height:
         _add_line(
@@ -235,6 +221,38 @@ def _draw_detail_panel(
             _truncate(f"TOTAL {_format_duration(group['total_seconds'])}", width),
             _attr(curses.A_BOLD),
         )
+
+
+def _draw_session_block(
+    screen,
+    session: dict,
+    top: int,
+    left: int,
+    width: int,
+    include_date: bool,
+) -> None:
+    block_width = max(width, 12)
+    _draw_box(screen, top, left, 4, block_width, "", focused=session.get("active", False))
+
+    title = f"{_status_icon(session)} {session['title']}"
+    _add_centered_line(
+        screen,
+        top + 1,
+        left + 1,
+        block_width - 2,
+        title,
+        _attr(curses.A_BOLD),
+    )
+
+    started = _format_time(session["started_at"], include_date=include_date)
+    stopped = (
+        "active"
+        if session["active"]
+        else _format_time(session["stopped_at"], include_date=include_date)
+    )
+    duration = _format_duration(session["duration_seconds"])
+    timing = f"{started} -> {stopped}    {duration}"
+    _add_centered_line(screen, top + 2, left + 1, block_width - 2, timing, _attr(curses.A_DIM))
 
 
 def _visible_offset(groups: list[dict], state: dict, visible_count: int) -> int:
@@ -434,6 +452,19 @@ def _draw_box(
 
     if title:
         _add_line(screen, top, left + 2, f" {title} ", attr)
+
+
+def _add_centered_line(
+    screen,
+    row: int,
+    column: int,
+    width: int,
+    text: str,
+    attr: int | None = None,
+) -> None:
+    clipped = _truncate(text, width)
+    padding = max((width - len(clipped)) // 2, 0)
+    _add_line(screen, row, column + padding, clipped, attr)
 
 
 def _add_line(screen, row: int, column: int, text: str, attr: int | None = None) -> None:
