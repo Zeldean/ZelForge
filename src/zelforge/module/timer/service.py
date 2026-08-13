@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timezone
 from uuid import NAMESPACE_URL, uuid5
 
 from . import storage
@@ -119,6 +119,16 @@ def save_closed_sessions() -> dict:
 
 def get_today_status(timer_refs: list[str] | None = None) -> list[dict]:
     """Return today's sessions grouped by timer."""
+    return get_status(timer_refs=timer_refs)
+
+
+def get_status(
+    timer_refs: list[str] | None = None,
+    date_filter: str | date | None = None,
+    start_date: str | date | None = None,
+    end_date: str | date | None = None,
+) -> list[dict]:
+    """Return sessions for a local date or date range, grouped by timer."""
     timers = storage.get_timers()
     timer_filters = _find_timer_ids(timer_refs or [], timers)
     timers_by_id = {timer["id"]: timer for timer in timers}
@@ -132,11 +142,7 @@ def get_today_status(timer_refs: list[str] | None = None) -> list[dict]:
         )
     ]
     selected_timer_ids = {timer["id"] for timer in selected_timers}
-    local_now = datetime.now().astimezone()
-    today = local_now.date()
-    local_tz = local_now.tzinfo
-    day_start = datetime.combine(today, time.min, tzinfo=local_tz)
-    day_end = datetime.combine(today, time.max, tzinfo=local_tz)
+    range_start, range_end = _status_range(date_filter, start_date, end_date)
     sessions_by_id: dict[str, dict] = {}
 
     for session in storage.get_sessions():
@@ -157,7 +163,7 @@ def get_today_status(timer_refs: list[str] | None = None) -> list[dict]:
 
     sessions = []
     for session in sessions_by_id.values():
-        clipped = _clip_session_to_range(session, day_start, day_end)
+        clipped = _clip_session_to_range(session, range_start, range_end)
         if clipped:
             sessions.append(clipped)
 
@@ -428,6 +434,52 @@ def _duration_seconds(started_at: str, stopped_at: str) -> int:
 
 def _parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value)
+
+
+def _status_range(
+    date_filter: str | date | None,
+    start_date: str | date | None,
+    end_date: str | date | None,
+) -> tuple[datetime, datetime]:
+    if date_filter and (start_date or end_date):
+        raise ValueError("Use --date or --start-date/--end-date, not both")
+
+    local_tz = datetime.now().astimezone().tzinfo
+    if date_filter:
+        selected = _parse_local_date(date_filter)
+        return _local_day_bounds(selected, local_tz)
+
+    if start_date or end_date:
+        start = _parse_local_date(start_date or end_date)
+        end = _parse_local_date(end_date or start_date)
+        if start > end:
+            raise ValueError("start date cannot be after end date")
+
+        range_start = datetime.combine(start, time.min, tzinfo=local_tz)
+        range_end = datetime.combine(end, time.max, tzinfo=local_tz)
+        return range_start, range_end
+
+    return _local_day_bounds(datetime.now().astimezone().date(), local_tz)
+
+
+def _parse_local_date(value: str | date | None) -> date:
+    if value is None:
+        raise ValueError("date is required")
+
+    if isinstance(value, date):
+        return value
+
+    try:
+        return date.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(f"Invalid date '{value}'. Use YYYY-MM-DD.") from error
+
+
+def _local_day_bounds(selected: date, local_tz) -> tuple[datetime, datetime]:
+    return (
+        datetime.combine(selected, time.min, tzinfo=local_tz),
+        datetime.combine(selected, time.max, tzinfo=local_tz),
+    )
 
 
 def _active_session_from_start_event(event: dict) -> dict | None:

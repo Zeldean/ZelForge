@@ -115,10 +115,32 @@ def save() -> None:
 
 
 @app.command()
-def status(timer_refs: list[str] = typer.Argument(None)) -> None:
-    """Show today's timer sessions and totals."""
+def status(
+    timer_refs: list[str] = typer.Argument(None),
+    date: str | None = typer.Option(
+        None,
+        "--date",
+        help="Show one local date, formatted YYYY-MM-DD.",
+    ),
+    start_date: str | None = typer.Option(
+        None,
+        "--start-date",
+        help="Start local date for an inclusive range.",
+    ),
+    end_date: str | None = typer.Option(
+        None,
+        "--end-date",
+        help="End local date for an inclusive range.",
+    ),
+) -> None:
+    """Show timer sessions and totals for a local date or range."""
     try:
-        groups = service.get_today_status(timer_refs)
+        groups = service.get_status(
+            timer_refs=timer_refs,
+            date_filter=date,
+            start_date=start_date,
+            end_date=end_date,
+        )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
@@ -126,6 +148,8 @@ def status(timer_refs: list[str] = typer.Argument(None)) -> None:
         typer.echo("no timers to display")
         return
 
+    include_date = _should_include_date(date, start_date, end_date)
+    stop_width = 16 if include_date else 6
     for group in groups:
         timer = group.get("timer", {})
         code = timer.get("code") or "-"
@@ -134,17 +158,22 @@ def status(timer_refs: list[str] = typer.Argument(None)) -> None:
 
         title_width = max([len(session["title"]) for session in group["sessions"]] + [5])
         for session in group["sessions"]:
-            started = _format_time(session["started_at"])
-            stopped = "active" if session["active"] else _format_time(session["stopped_at"])
+            started = _format_time(session["started_at"], include_date=include_date)
+            stopped = (
+                "active"
+                if session["active"]
+                else _format_time(session["stopped_at"], include_date=include_date)
+            )
             duration = _format_duration(session["duration_seconds"])
             typer.echo(
                 f"├── {session['title']:<{title_width}}  "
-                f"{started} -> {stopped:<6}  {duration}"
+                f"{started} -> {stopped:<{stop_width}}  {duration}"
             )
 
         typer.echo(
             f"└── {'TOTAL':<{title_width}}  "
-            f"{'':>5}    {'':<6}  {_format_duration(group['total_seconds'])}"
+            f"{'':>{len(started) if group['sessions'] else 5}}    "
+            f"{'':<{stop_width}}  {_format_duration(group['total_seconds'])}"
         )
 
 
@@ -190,9 +219,24 @@ def _format_duration(total_seconds: int) -> str:
     return f"{minutes}m {seconds:02}s"
 
 
-def _format_time(value: str) -> str:
+def _format_time(value: str, include_date: bool = False) -> str:
     timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    return timestamp.astimezone().strftime("%H:%M")
+    format_text = "%Y-%m-%d %H:%M" if include_date else "%H:%M"
+    return timestamp.astimezone().strftime(format_text)
+
+
+def _should_include_date(
+    date: str | None,
+    start_date: str | None,
+    end_date: str | None,
+) -> bool:
+    if date:
+        return False
+
+    if not start_date and not end_date:
+        return False
+
+    return (start_date or end_date) != (end_date or start_date)
 
 
 if __name__ == "__main__":

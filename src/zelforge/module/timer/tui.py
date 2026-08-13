@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import curses
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from . import service
 
 
-HELP_TEXT = "q quit  r refresh  up/down select  enter/s start or stop"
+HELP_TEXT = (
+    "q quit  p/n date  t today  d set date  g range  r refresh  "
+    "up/down select  enter/s start or stop"
+)
 DEFAULT_ATTR = curses.A_NORMAL
 REFRESH_TIMEOUT_MS = 1000
 
@@ -25,10 +28,12 @@ def _run(screen) -> None:
         "selected": 0,
         "offset": 0,
         "message": "",
+        "start_date": date.today(),
+        "end_date": date.today(),
     }
 
     while True:
-        groups = service.get_today_status()
+        groups = _load_groups(state)
         selected = min(state["selected"], max(len(groups) - 1, 0))
         state["selected"] = selected
         _draw(screen, groups, state)
@@ -43,106 +48,189 @@ def _run(screen) -> None:
             state["selected"] = max(selected - 1, 0)
         elif key in (curses.KEY_DOWN, ord("j"), ord("J")):
             state["selected"] = min(selected + 1, max(len(groups) - 1, 0))
+        elif key in (ord("p"), ord("P")):
+            _shift_range(state, -1)
+        elif key in (ord("n"), ord("N")):
+            _shift_range(state, 1)
+        elif key in (ord("t"), ord("T")):
+            today = date.today()
+            state["start_date"] = today
+            state["end_date"] = today
+            state["message"] = "showing today"
+        elif key in (ord("d"), ord("D")):
+            _set_date(screen, state)
+        elif key in (ord("g"), ord("G")):
+            _set_range(screen, state)
         elif key in (ord("r"), ord("R")):
             state["message"] = "refreshed"
         elif key in (curses.KEY_ENTER, 10, 13, ord("s"), ord("S")):
             _toggle_selected_timer(screen, groups, selected, state)
 
 
+def _load_groups(state: dict) -> list[dict]:
+    return service.get_status(
+        date_filter=state["start_date"] if _is_single_day(state) else None,
+        start_date=None if _is_single_day(state) else state["start_date"],
+        end_date=None if _is_single_day(state) else state["end_date"],
+    )
+
+
 def _draw(screen, groups: list[dict], state: dict) -> None:
     screen.erase()
     height, width = screen.getmaxyx()
-    _add_line(screen, 0, 0, "ZelTimer", _attr(curses.A_BOLD))
-    _add_line(screen, 1, 0, HELP_TEXT)
+    _add_line(screen, 0, 1, f"ZelTimer  {_range_label(state)}", _attr(curses.A_BOLD))
+    _add_line(screen, 1, 1, _truncate(HELP_TEXT, width - 3), _attr(curses.A_DIM))
 
     if state.get("message"):
-        _add_line(screen, 2, 0, state["message"], _attr(curses.A_DIM))
+        _add_line(screen, 2, 1, _truncate(state["message"], width - 3), _attr(curses.A_DIM))
 
-    row = 4
-    if not groups:
-        _add_line(screen, row, 0, "No timers to display")
+    if width < 72 or height < 14:
+        _draw_small(screen, groups, state, height, width)
         screen.refresh()
         return
 
-    offset = _visible_offset(groups, state, height)
+    list_width = max(min(width // 2, 72), 38)
+    detail_width = width - list_width - 4
+    panel_top = 4
+    panel_height = height - panel_top - 1
+
+    _draw_box(screen, panel_top, 1, panel_height, list_width, "Timers", focused=True)
+    _draw_box(screen, panel_top, list_width + 2, panel_height, detail_width, "Sessions")
+
+    if not groups:
+        _add_line(screen, panel_top + 2, 3, "No timers to display")
+        screen.refresh()
+        return
+
+    _draw_timer_tickets(screen, groups, state, panel_top + 1, 2, panel_height - 2, list_width - 2)
+    _draw_detail_panel(
+        screen,
+        groups[state["selected"]],
+        state,
+        panel_top + 1,
+        list_width + 3,
+        panel_height - 2,
+        detail_width - 2,
+    )
+    screen.refresh()
+
+
+def _draw_small(screen, groups: list[dict], state: dict, height: int, width: int) -> None:
+    if not groups:
+        _add_line(screen, 4, 1, "No timers to display")
+        return
+
+    row = 4
+    offset = _visible_offset(groups, state, height - 4)
     for index, group in enumerate(groups[offset:], offset):
         if row >= height - 1:
             break
 
-        timer = group.get("timer", {})
-        selected = index == state["selected"]
-        row = _draw_timer_group(screen, row, timer, group, selected)
+        marker = ">" if index == state["selected"] else " "
+        _add_line(screen, row, 1, _truncate(f"{marker} {_timer_summary(group)}", width - 2))
         row += 1
 
-    screen.refresh()
 
-
-def _visible_offset(groups: list[dict], state: dict, height: int) -> int:
-    selected = state["selected"]
-    offset = min(state.get("offset", 0), selected)
-    available_rows = max(height - 5, 1)
-
-    while selected >= offset and not _selection_fits(
-        groups,
-        offset,
-        selected,
-        available_rows,
-    ):
-        offset += 1
-
-    state["offset"] = offset
-    return offset
-
-
-def _selection_fits(
-    groups: list[dict],
-    offset: int,
-    selected: int,
-    available_rows: int,
-) -> bool:
-    used_rows = 0
-    for group in groups[offset : selected + 1]:
-        used_rows += _group_height(group)
-
-    return used_rows <= available_rows
-
-
-def _group_height(group: dict) -> int:
-    return len(group.get("sessions", [])) + 3
-
-
-def _draw_timer_group(
+def _draw_timer_tickets(
     screen,
-    row: int,
-    timer: dict,
-    group: dict,
-    selected: bool,
-) -> int:
-    code = timer.get("code") or "-"
-    name = timer.get("name") or "-"
-    active = _timer_has_active_session(timer)
-    marker = ">" if selected else " "
-    status = "running" if active else "idle"
-    title = f"{marker} {name} ({code}) [{status}]"
-    _add_line(screen, row, 0, title, _attr(curses.A_BOLD if selected else curses.A_NORMAL))
-    row += 1
+    groups: list[dict],
+    state: dict,
+    top: int,
+    left: int,
+    height: int,
+    width: int,
+) -> None:
+    ticket_height = 4
+    visible_count = max(height // ticket_height, 1)
+    offset = _visible_offset(groups, state, visible_count)
+    row = top
 
-    title_width = max([len(session["title"]) for session in group["sessions"]] + [5])
-    for session in group["sessions"]:
-        started = _format_time(session["started_at"])
-        stopped = "active" if session["active"] else _format_time(session["stopped_at"])
+    for index, group in enumerate(groups[offset : offset + visible_count], offset):
+        selected = index == state["selected"]
+        attr = _attr(curses.A_BOLD if selected else curses.A_NORMAL)
+        timer = group.get("timer", {})
+        _draw_box(screen, row, left, 3, width, "", focused=selected)
+        _add_line(screen, row + 1, left + 2, _truncate(_timer_summary(group), width - 4), attr)
+        meta = (
+            f"{timer.get('code') or '-'}  {len(group.get('sessions', []))} sessions  "
+            f"{_format_duration(group['total_seconds'])}"
+        )
+        _add_line(screen, row + 2, left + 2, _truncate(meta, width - 4), _attr(curses.A_DIM))
+        row += ticket_height
+
+
+def _draw_detail_panel(
+    screen,
+    group: dict,
+    state: dict,
+    top: int,
+    left: int,
+    height: int,
+    width: int,
+) -> None:
+    timer = group.get("timer", {})
+    row = top + 1
+    _add_line(screen, row, left, _truncate(timer.get("name") or "-", width), _attr(curses.A_BOLD))
+    row += 1
+    _add_line(
+        screen,
+        row,
+        left,
+        _truncate(
+            f"code {timer.get('code') or '-'}  total {_format_duration(group['total_seconds'])}",
+            width,
+        ),
+        _attr(curses.A_DIM),
+    )
+    row += 2
+
+    sessions = group.get("sessions", [])
+    if not sessions:
+        _add_line(screen, row, left, "No sessions in this range")
+        return
+
+    title_width = min(max([len(session["title"]) for session in sessions] + [5]), 32)
+    include_date = not _is_single_day(state)
+    stop_width = 16 if include_date else 6
+    for session in sessions:
+        if row >= top + height - 2:
+            break
+
+        started = _format_time(session["started_at"], include_date=include_date)
+        stopped = (
+            "active"
+            if session["active"]
+            else _format_time(session["stopped_at"], include_date=include_date)
+        )
         duration = _format_duration(session["duration_seconds"])
         line = (
-            f"  ├── {session['title']:<{title_width}}  "
-            f"{started} -> {stopped:<6}  {duration}"
+            f"{_status_icon(session)} "
+            f"{session['title']:<{title_width}}  "
+            f"{started} -> {stopped:<{stop_width}}  {duration}"
         )
-        _add_line(screen, row, 0, line)
+        _add_line(screen, row, left, _truncate(line, width))
         row += 1
 
-    total = _format_duration(group["total_seconds"])
-    line = f"  └── {'TOTAL':<{title_width}}  {'':>5}    {'':<6}  {total}"
-    _add_line(screen, row, 0, line, _attr(curses.A_BOLD))
-    return row + 1
+    if row < top + height:
+        _add_line(
+            screen,
+            row + 1,
+            left,
+            _truncate(f"TOTAL {_format_duration(group['total_seconds'])}", width),
+            _attr(curses.A_BOLD),
+        )
+
+
+def _visible_offset(groups: list[dict], state: dict, visible_count: int) -> int:
+    selected = state["selected"]
+    offset = min(state.get("offset", 0), selected)
+    visible_count = max(visible_count, 1)
+
+    if selected >= offset + visible_count:
+        offset = selected - visible_count + 1
+
+    state["offset"] = max(offset, 0)
+    return state["offset"]
 
 
 def _toggle_selected_timer(
@@ -176,8 +264,66 @@ def _toggle_selected_timer(
 
             session = service.start_timer(timer_ref, title=title)
             state["message"] = f"started {timer.get('name')}: {session['title']}"
+            today = date.today()
+            state["start_date"] = today
+            state["end_date"] = today
     except ValueError as error:
         state["message"] = str(error)
+
+
+def _set_date(screen, state: dict) -> None:
+    value = _prompt(screen, "Date", default=state["start_date"].isoformat())
+    if value is None:
+        state["message"] = "cancelled"
+        return
+
+    try:
+        selected = date.fromisoformat(value)
+    except ValueError:
+        state["message"] = f"invalid date: {value}"
+        return
+
+    state["start_date"] = selected
+    state["end_date"] = selected
+    state["selected"] = 0
+    state["offset"] = 0
+    state["message"] = f"showing {selected.isoformat()}"
+
+
+def _set_range(screen, state: dict) -> None:
+    start_value = _prompt(screen, "Start date", default=state["start_date"].isoformat())
+    if start_value is None:
+        state["message"] = "cancelled"
+        return
+
+    end_value = _prompt(screen, "End date", default=state["end_date"].isoformat())
+    if end_value is None:
+        state["message"] = "cancelled"
+        return
+
+    try:
+        start = date.fromisoformat(start_value)
+        end = date.fromisoformat(end_value)
+    except ValueError:
+        state["message"] = "invalid range date"
+        return
+
+    if start > end:
+        state["message"] = "start date cannot be after end date"
+        return
+
+    state["start_date"] = start
+    state["end_date"] = end
+    state["selected"] = 0
+    state["offset"] = 0
+    state["message"] = f"showing {_range_label(state)}"
+
+
+def _shift_range(state: dict, days: int) -> None:
+    delta = timedelta(days=days)
+    state["start_date"] = state["start_date"] + delta
+    state["end_date"] = state["end_date"] + delta
+    state["message"] = f"showing {_range_label(state)}"
 
 
 def _timer_has_active_session(timer: dict) -> bool:
@@ -191,12 +337,36 @@ def _timer_has_active_session(timer: dict) -> bool:
         return True
 
 
+def _timer_summary(group: dict) -> str:
+    timer = group.get("timer", {})
+    running = " running" if _timer_has_active_session(timer) else ""
+    return (
+        f"{timer.get('name') or '-'} ({timer.get('code') or '-'})"
+        f"{running}  {_format_duration(group['total_seconds'])}"
+    )
+
+
+def _is_single_day(state: dict) -> bool:
+    return state["start_date"] == state["end_date"]
+
+
+def _range_label(state: dict) -> str:
+    if _is_single_day(state):
+        return state["start_date"].isoformat()
+
+    return f"{state['start_date'].isoformat()} -> {state['end_date'].isoformat()}"
+
+
+def _status_icon(session: dict) -> str:
+    return "●" if session.get("active") else "•"
+
+
 def _prompt(screen, label: str, default: str = "") -> str | None:
     height, width = screen.getmaxyx()
     prompt = f"{label} [{default}]: "
     row = height - 1
     _add_line(screen, row, 0, " " * max(width - 1, 0))
-    _add_line(screen, row, 0, prompt)
+    _add_line(screen, row, 0, _truncate(prompt, width - 1))
     screen.timeout(-1)
     _set_cursor(True)
     curses.echo()
@@ -212,6 +382,42 @@ def _prompt(screen, label: str, default: str = "") -> str | None:
 
     text = value.decode("utf-8").strip()
     return text or default
+
+
+def _draw_box(
+    screen,
+    top: int,
+    left: int,
+    height: int,
+    width: int,
+    title: str,
+    focused: bool = False,
+) -> None:
+    if height < 2 or width < 4:
+        return
+
+    attr = _attr(curses.A_BOLD if focused else curses.A_NORMAL)
+    horizontal = "═" if focused else "─"
+    vertical = "║" if focused else "│"
+    top_left = "╔" if focused else "┌"
+    top_right = "╗" if focused else "┐"
+    bottom_left = "╚" if focused else "└"
+    bottom_right = "╝" if focused else "┘"
+
+    _add_line(screen, top, left, top_left + horizontal * (width - 2) + top_right, attr)
+    for row in range(top + 1, top + height - 1):
+        _add_line(screen, row, left, vertical, attr)
+        _add_line(screen, row, left + width - 1, vertical, attr)
+    _add_line(
+        screen,
+        top + height - 1,
+        left,
+        bottom_left + horizontal * (width - 2) + bottom_right,
+        attr,
+    )
+
+    if title:
+        _add_line(screen, top, left + 2, f" {title} ", attr)
 
 
 def _add_line(screen, row: int, column: int, text: str, attr: int | None = None) -> None:
@@ -267,6 +473,14 @@ def _format_duration(total_seconds: int) -> str:
     return f"{minutes}m {seconds:02}s"
 
 
-def _format_time(value: str) -> str:
+def _format_time(value: str, include_date: bool = False) -> str:
     timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    return timestamp.astimezone().strftime("%H:%M")
+    format_text = "%Y-%m-%d %H:%M" if include_date else "%H:%M"
+    return timestamp.astimezone().strftime(format_text)
+
+
+def _truncate(value: str, width: int) -> str:
+    if width <= 0 or len(value) <= width:
+        return value
+
+    return f"{value[: max(width - 1, 0)]}…"
