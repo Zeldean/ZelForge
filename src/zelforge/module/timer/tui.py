@@ -89,7 +89,7 @@ def _draw(screen, groups: list[dict], state: dict) -> None:
         screen.refresh()
         return
 
-    list_width = max(min(width // 2, 72), 38)
+    list_width = _timer_panel_width(groups, width)
     detail_width = width - list_width - 4
     panel_top = 4
     panel_height = height - panel_top - 1
@@ -157,6 +157,22 @@ def _draw_timer_tickets(
         )
         _add_line(screen, row + 2, left + 2, _truncate(meta, width - 4), _attr(curses.A_DIM))
         row += ticket_height
+
+
+def _timer_panel_width(groups: list[dict], screen_width: int) -> int:
+    if not groups:
+        return min(34, max(screen_width - 42, 24))
+
+    content_width = max(
+        [
+            len(_timer_summary(group))
+            for group in groups
+        ]
+        + [len("Timers")]
+    )
+    desired = content_width + 6
+    max_width = max(min(screen_width - 44, 52), 28)
+    return max(min(desired, max_width), 28)
 
 
 def _draw_detail_panel(

@@ -107,7 +107,7 @@ def _draw(screen, tasks: list[dict], state: dict) -> None:
         screen.refresh()
         return
 
-    list_width = max(min(width // 2, 74), 38)
+    list_width = _task_panel_width(tasks, width)
     detail_width = width - list_width - 4
     panel_top = 4
     panel_height = height - panel_top - 1
@@ -191,6 +191,22 @@ def _draw_task_tickets(
         )
         _add_line(screen, row + 2, left + 2, _truncate(meta, width - 4), _attr(curses.A_DIM))
         row += ticket_height
+
+
+def _task_panel_width(tasks: list[dict], screen_width: int) -> int:
+    if not tasks:
+        return min(38, max(screen_width - 46, 28))
+
+    content_width = max(
+        [
+            len(_task_summary_line(task))
+            for task in tasks
+        ]
+        + [len("Tasks")]
+    )
+    desired = content_width + 6
+    max_width = max(min(screen_width - 48, 64), 34)
+    return max(min(desired, max_width), 34)
 
 
 def _draw_detail_panel(
