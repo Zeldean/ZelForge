@@ -12,6 +12,15 @@ HELP_TEXT = (
     "a task  s subtask  e edit  d done  c cancel  o reopen  x remove subtask"
 )
 DEFAULT_ATTR = curses.A_NORMAL
+COLORS_ENABLED = False
+C_HEADER = 2
+C_MUTED = 3
+C_BORDER = 4
+C_FOCUS = 5
+C_DONE = 6
+C_MESSAGE = 7
+C_CANCELLED = 8
+C_ACCENT = 9
 FOCUS_TASKS = "tasks"
 FOCUS_SUBTASKS = "subtasks"
 
@@ -96,11 +105,11 @@ def _draw(screen, tasks: list[dict], state: dict) -> None:
     screen.erase()
     height, width = screen.getmaxyx()
     mode = "all" if state["include_all"] else "active"
-    _add_line(screen, 0, 1, f"ZelTask ({mode})", _attr(curses.A_BOLD))
-    _add_line(screen, 1, 1, _truncate(HELP_TEXT, width - 3), _attr(curses.A_DIM))
+    _add_line(screen, 0, 1, f"ZelTask ({mode})", _color(C_HEADER, curses.A_BOLD))
+    _add_line(screen, 1, 1, _truncate(HELP_TEXT, width - 3), _color(C_MUTED, curses.A_DIM))
 
     if state.get("message"):
-        _add_line(screen, 2, 1, _truncate(state["message"], width - 3), _attr(curses.A_DIM))
+        _add_line(screen, 2, 1, _truncate(state["message"], width - 3), _color(C_MESSAGE))
 
     if width < 72 or height < 14:
         _draw_small(screen, tasks, state, height, width)
@@ -182,14 +191,14 @@ def _draw_task_tickets(
 
     for index, task in enumerate(tasks[offset : offset + visible_count], offset):
         selected = index == state["selected"]
-        attr = _attr(curses.A_BOLD if selected else curses.A_NORMAL)
+        attr = _task_attr(task, selected)
         _draw_box(screen, row, left, 3, width, "", focused=selected)
         _add_line(screen, row + 1, left + 2, _truncate(_task_summary_line(task), width - 4), attr)
         meta = (
             f"{task['id'][:8]}  {task['status']}  "
             f"{get_priority_label(task.get('priority'))}"
         )
-        _add_line(screen, row + 2, left + 2, _truncate(meta, width - 4), _attr(curses.A_DIM))
+        _add_line(screen, row + 2, left + 2, _truncate(meta, width - 4), _color(C_MUTED, curses.A_DIM))
         row += ticket_height
 
 
@@ -219,7 +228,7 @@ def _draw_detail_panel(
     width: int,
 ) -> None:
     row = top + 1
-    _add_line(screen, row, left, _truncate(task["title"], width), _attr(curses.A_BOLD))
+    _add_line(screen, row, left, _truncate(task["title"], width), _color(C_HEADER, curses.A_BOLD))
     row += 2
 
     meta_lines = [
@@ -236,7 +245,7 @@ def _draw_detail_panel(
         row += 1
 
     row += 1
-    _add_line(screen, row, left, "Description", _attr(curses.A_BOLD))
+    _add_line(screen, row, left, "Description", _color(C_ACCENT, curses.A_BOLD))
     row += 1
     for line in _wrap(task.get("description") or "-", width):
         if row >= top + height:
@@ -252,7 +261,7 @@ def _draw_detail_panel(
         row,
         left,
         f"Subtasks {_subtask_summary(task.get('subtasks', []))}",
-        _attr(curses.A_BOLD),
+        _color(C_ACCENT, curses.A_BOLD),
     )
     row += 1
     _draw_subtasks(screen, task, state, row, left, top + height - row, width)
@@ -287,7 +296,7 @@ def _draw_subtasks(
         selected = state["focus"] == FOCUS_SUBTASKS and index == state["subtask_selected"]
         marker = ">" if selected else " "
         line = f"{marker} {_status_icon(subtask)} {subtask['title']}"
-        attr = _attr(curses.A_BOLD if selected else curses.A_NORMAL)
+        attr = _task_attr(subtask, selected)
         _add_line(screen, row, left, _truncate(line, width), attr)
 
 
@@ -482,6 +491,19 @@ def _status_icon(task: dict) -> str:
     return "•"
 
 
+def _task_attr(task: dict, selected: bool = False) -> int:
+    status = task.get("status")
+    style = curses.A_BOLD if selected else curses.A_NORMAL
+    if selected:
+        return _color(C_FOCUS, style)
+    if status == "done":
+        return _color(C_DONE, style)
+    if status == "cancelled":
+        return _color(C_CANCELLED, style)
+
+    return _attr(style)
+
+
 def _subtask_summary(subtasks: list[dict]) -> str:
     if not subtasks:
         return ""
@@ -545,7 +567,7 @@ def _draw_box(
     if height < 2 or width < 4:
         return
 
-    attr = _attr(curses.A_BOLD if focused else curses.A_NORMAL)
+    attr = _color(C_FOCUS if focused else C_BORDER, curses.A_BOLD if focused else curses.A_NORMAL)
     horizontal = "═" if focused else "─"
     vertical = "║" if focused else "│"
     top_left = "╔" if focused else "┌"
@@ -590,7 +612,7 @@ def _add_line(screen, row: int, column: int, text: str, attr: int | None = None)
 
 
 def _init_colors(screen) -> None:
-    global DEFAULT_ATTR
+    global COLORS_ENABLED, DEFAULT_ATTR
 
     if not curses.has_colors():
         return
@@ -599,14 +621,31 @@ def _init_colors(screen) -> None:
         curses.start_color()
         curses.use_default_colors()
         curses.init_pair(1, -1, -1)
+        curses.init_pair(C_HEADER, curses.COLOR_CYAN, -1)
+        curses.init_pair(C_MUTED, curses.COLOR_WHITE, -1)
+        curses.init_pair(C_BORDER, curses.COLOR_BLUE, -1)
+        curses.init_pair(C_FOCUS, curses.COLOR_CYAN, -1)
+        curses.init_pair(C_DONE, curses.COLOR_GREEN, -1)
+        curses.init_pair(C_MESSAGE, curses.COLOR_YELLOW, -1)
+        curses.init_pair(C_CANCELLED, curses.COLOR_RED, -1)
+        curses.init_pair(C_ACCENT, curses.COLOR_MAGENTA, -1)
         DEFAULT_ATTR = curses.color_pair(1)
+        COLORS_ENABLED = True
         screen.bkgdset(" ", DEFAULT_ATTR)
     except curses.error:
         DEFAULT_ATTR = curses.A_NORMAL
+        COLORS_ENABLED = False
 
 
 def _attr(attr: int) -> int:
     return DEFAULT_ATTR | attr
+
+
+def _color(pair: int, attr: int = curses.A_NORMAL) -> int:
+    if COLORS_ENABLED:
+        return DEFAULT_ATTR | curses.color_pair(pair) | attr
+
+    return _attr(attr)
 
 
 def _set_cursor(visible: bool) -> None:

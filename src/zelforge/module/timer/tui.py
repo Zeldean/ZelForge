@@ -12,6 +12,14 @@ HELP_TEXT = (
 )
 DEFAULT_ATTR = curses.A_NORMAL
 REFRESH_TIMEOUT_MS = 1000
+COLORS_ENABLED = False
+C_HEADER = 2
+C_MUTED = 3
+C_BORDER = 4
+C_FOCUS = 5
+C_ACTIVE = 6
+C_MESSAGE = 7
+C_ACCENT = 8
 
 
 def run() -> None:
@@ -78,11 +86,11 @@ def _load_groups(state: dict) -> list[dict]:
 def _draw(screen, groups: list[dict], state: dict) -> None:
     screen.erase()
     height, width = screen.getmaxyx()
-    _add_line(screen, 0, 1, f"ZelTimer  {_range_label(state)}", _attr(curses.A_BOLD))
-    _add_line(screen, 1, 1, _truncate(HELP_TEXT, width - 3), _attr(curses.A_DIM))
+    _add_line(screen, 0, 1, f"ZelTimer  {_range_label(state)}", _color(C_HEADER, curses.A_BOLD))
+    _add_line(screen, 1, 1, _truncate(HELP_TEXT, width - 3), _color(C_MUTED, curses.A_DIM))
 
     if state.get("message"):
-        _add_line(screen, 2, 1, _truncate(state["message"], width - 3), _attr(curses.A_DIM))
+        _add_line(screen, 2, 1, _truncate(state["message"], width - 3), _color(C_MESSAGE))
 
     if width < 72 or height < 14:
         _draw_small(screen, groups, state, height, width)
@@ -147,7 +155,7 @@ def _draw_timer_tickets(
 
     for index, group in enumerate(groups[offset : offset + visible_count], offset):
         selected = index == state["selected"]
-        attr = _attr(curses.A_BOLD if selected else curses.A_NORMAL)
+        attr = _color(C_FOCUS, curses.A_BOLD) if selected else _attr(curses.A_NORMAL)
         timer = group.get("timer", {})
         _draw_box(screen, row, left, 3, width, "", focused=selected)
         _add_line(screen, row + 1, left + 2, _truncate(_timer_summary(group), width - 4), attr)
@@ -155,7 +163,7 @@ def _draw_timer_tickets(
             f"{timer.get('code') or '-'}  {len(group.get('sessions', []))} sessions  "
             f"{_format_duration(group['total_seconds'])}"
         )
-        _add_line(screen, row + 2, left + 2, _truncate(meta, width - 4), _attr(curses.A_DIM))
+        _add_line(screen, row + 2, left + 2, _truncate(meta, width - 4), _color(C_MUTED, curses.A_DIM))
         row += ticket_height
 
 
@@ -186,7 +194,7 @@ def _draw_detail_panel(
 ) -> None:
     timer = group.get("timer", {})
     row = top + 1
-    _add_line(screen, row, left, _truncate(timer.get("name") or "-", width), _attr(curses.A_BOLD))
+    _add_line(screen, row, left, _truncate(timer.get("name") or "-", width), _color(C_HEADER, curses.A_BOLD))
     row += 1
     _add_line(
         screen,
@@ -196,7 +204,7 @@ def _draw_detail_panel(
             f"code {timer.get('code') or '-'}  total {_format_duration(group['total_seconds'])}",
             width,
         ),
-        _attr(curses.A_DIM),
+        _color(C_MUTED, curses.A_DIM),
     )
     row += 2
 
@@ -219,7 +227,7 @@ def _draw_detail_panel(
             row + 1,
             left,
             _truncate(f"TOTAL {_format_duration(group['total_seconds'])}", width),
-            _attr(curses.A_BOLD),
+            _color(C_ACCENT, curses.A_BOLD),
         )
 
 
@@ -241,7 +249,7 @@ def _draw_session_block(
         left + 1,
         block_width - 2,
         title,
-        _attr(curses.A_BOLD),
+        _color(C_ACTIVE, curses.A_BOLD) if session.get("active") else _attr(curses.A_BOLD),
     )
 
     started = _format_time(session["started_at"], include_date=include_date)
@@ -252,7 +260,7 @@ def _draw_session_block(
     )
     duration = _format_duration(session["duration_seconds"])
     timing = f"{started} -> {stopped}    {duration}"
-    _add_centered_line(screen, top + 2, left + 1, block_width - 2, timing, _attr(curses.A_DIM))
+    _add_centered_line(screen, top + 2, left + 1, block_width - 2, timing, _color(C_MUTED, curses.A_DIM))
 
 
 def _visible_offset(groups: list[dict], state: dict, visible_count: int) -> int:
@@ -430,7 +438,7 @@ def _draw_box(
     if height < 2 or width < 4:
         return
 
-    attr = _attr(curses.A_BOLD if focused else curses.A_NORMAL)
+    attr = _color(C_FOCUS if focused else C_BORDER, curses.A_BOLD if focused else curses.A_NORMAL)
     horizontal = "═" if focused else "─"
     vertical = "║" if focused else "│"
     top_left = "╔" if focused else "┌"
@@ -484,7 +492,7 @@ def _add_line(screen, row: int, column: int, text: str, attr: int | None = None)
 
 
 def _init_colors(screen) -> None:
-    global DEFAULT_ATTR
+    global COLORS_ENABLED, DEFAULT_ATTR
 
     if not curses.has_colors():
         return
@@ -493,14 +501,30 @@ def _init_colors(screen) -> None:
         curses.start_color()
         curses.use_default_colors()
         curses.init_pair(1, -1, -1)
+        curses.init_pair(C_HEADER, curses.COLOR_CYAN, -1)
+        curses.init_pair(C_MUTED, curses.COLOR_WHITE, -1)
+        curses.init_pair(C_BORDER, curses.COLOR_BLUE, -1)
+        curses.init_pair(C_FOCUS, curses.COLOR_CYAN, -1)
+        curses.init_pair(C_ACTIVE, curses.COLOR_GREEN, -1)
+        curses.init_pair(C_MESSAGE, curses.COLOR_YELLOW, -1)
+        curses.init_pair(C_ACCENT, curses.COLOR_MAGENTA, -1)
         DEFAULT_ATTR = curses.color_pair(1)
+        COLORS_ENABLED = True
         screen.bkgdset(" ", DEFAULT_ATTR)
     except curses.error:
         DEFAULT_ATTR = curses.A_NORMAL
+        COLORS_ENABLED = False
 
 
 def _attr(attr: int) -> int:
     return DEFAULT_ATTR | attr
+
+
+def _color(pair: int, attr: int = curses.A_NORMAL) -> int:
+    if COLORS_ENABLED:
+        return DEFAULT_ATTR | curses.color_pair(pair) | attr
+
+    return _attr(attr)
 
 
 def _set_cursor(visible: bool) -> None:
