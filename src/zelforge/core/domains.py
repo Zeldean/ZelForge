@@ -55,6 +55,19 @@ def get_default_domain() -> str | None:
     return load_domains_data().get("default_domain")
 
 
+def get_domain_name(code: str | None) -> str:
+    """Return the display name for a domain code."""
+    if not code:
+        return ""
+
+    normalized_code = _normalize_code(code)
+    domain = _find_domain(load_domains_data()["domains"], normalized_code)
+    if not domain:
+        return normalized_code
+
+    return domain.get("name") or normalized_code
+
+
 def resolve_domain_code(code: str) -> str:
     """Return a normalized active domain code or raise a clear error."""
     normalized_code = _normalize_code(code)

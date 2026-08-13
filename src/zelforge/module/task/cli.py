@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import typer
 
+from zelforge.core.domains import get_domain_name
+
 from . import service
 from .models import get_priority_label
 
@@ -84,7 +86,7 @@ def show(task_ref: str) -> None:
     typer.echo(f"title       {task['title']}")
     typer.echo(f"status      {task['status']}")
     typer.echo(f"priority    {get_priority_label(task.get('priority'))}")
-    typer.echo(f"domain      {task.get('domain') or '-'}")
+    typer.echo(f"domain      {_domain_label(task.get('domain'))}")
     typer.echo(f"tags        {', '.join(task.get('tags', [])) or '-'}")
     typer.echo(f"created_at  {task['created_at']}")
     typer.echo(f"updated_at  {task['updated_at']}")
@@ -263,7 +265,7 @@ def tui() -> None:
 def _format_task_line(task: dict) -> str:
     tags = ",".join(task.get("tags", []))
     tag_text = f" [{tags}]" if tags else ""
-    domain = task.get("domain")
+    domain = _domain_label(task.get("domain"), empty="")
     domain_text = f" ({domain})" if domain else ""
     subtask_text = _subtask_summary(task.get("subtasks", []))
     return (
@@ -285,6 +287,13 @@ def _echo_subtasks(subtasks: list[dict]) -> None:
 
 def _format_subtask_line(subtask: dict) -> str:
     return f"{subtask['id'][:8]}  {subtask['status']:<9} {subtask['title']}"
+
+
+def _domain_label(code: str | None, empty: str = "-") -> str:
+    if not code:
+        return empty
+
+    return get_domain_name(code)
 
 
 def _subtask_summary(subtasks: list[dict]) -> str:

@@ -13,6 +13,7 @@ HELP_TEXT = (
     "q quit  tab active/all  left/right focus  up/down select  "
     "a task  s subtask  e edit  d done  c cancel  o reopen  x remove subtask"
 )
+DOMAIN_PICKER_HELP = "type to filter  up/down select  enter choose  esc cancel"
 DEFAULT_ATTR = curses.A_NORMAL
 COLORS_ENABLED = False
 C_HEADER = 2
@@ -237,7 +238,7 @@ def _draw_detail_panel(
         f"id        {task['id'][:8]}",
         f"status    {task['status']}",
         f"priority  {get_priority_label(task.get('priority'))}",
-        f"domain    {task.get('domain') or '-'}",
+        f"domain    {_domain_label(task.get('domain'))}",
         f"tags      {', '.join(task.get('tags', [])) or '-'}",
     ]
     for line in meta_lines:
@@ -476,7 +477,7 @@ def _mode_message(state: dict) -> str:
 
 
 def _task_summary_line(task: dict) -> str:
-    domain = task.get("domain")
+    domain = _domain_label(task.get("domain"), empty="")
     domain_text = f" ({domain})" if domain else ""
     return (
         f"{_status_icon(task)} {task['title']}{domain_text} "
@@ -504,6 +505,13 @@ def _task_attr(task: dict, selected: bool = False) -> int:
         return _color(C_CANCELLED, style)
 
     return _attr(style)
+
+
+def _domain_label(code: str | None, empty: str = "-") -> str:
+    if not code:
+        return empty
+
+    return domain_store.get_domain_name(code)
 
 
 def _subtask_summary(subtasks: list[dict]) -> str:
@@ -574,7 +582,6 @@ def _select_priority(screen) -> int | None:
 
 def _select_domain(screen) -> str | None:
     domains = domain_store.list_domains()
-    default_domain = domain_store.get_default_domain()
     if not domains:
         answer = _prompt(screen, "No domains. Add one? y/n", default="n")
         if answer is None or answer.lower() != "y":
@@ -582,36 +589,114 @@ def _select_domain(screen) -> str | None:
 
         return _add_domain_from_prompt(screen)
 
-    options = ["0 none"]
-    for index, domain in enumerate(domains, start=1):
-        code = domain.get("code") or domain.get("key") or "-"
-        default_marker = "*" if code == default_domain else ""
-        options.append(f"{index} {code}{default_marker}")
-
-    options.append("a add")
-    value = _prompt(screen, f"Domain ({'  '.join(options)})", default=_default_domain_choice(domains, default_domain))
-    if value is None:
-        return None
-
-    normalized = value.strip().lower()
-    if normalized in {"", "0", "none"}:
-        return ""
-
-    if normalized in {"a", "add", "+"}:
-        return _add_domain_from_prompt(screen)
-
-    if normalized.isdigit():
-        index = int(normalized)
-        if index == 0:
-            return ""
-        if 1 <= index <= len(domains):
-            return domains[index - 1].get("code") or domains[index - 1].get("key") or ""
-
-    return normalized
+    return _pick_domain(screen, domains)
 
 
-def _add_domain_from_prompt(screen) -> str | None:
-    code = _prompt(screen, "Domain code")
+def _pick_domain(screen, domains: list[dict]) -> str | None:
+    filter_text = ""
+    selected = 0
+    default_domain = domain_store.get_default_domain()
+    default_applied = False
+    _set_cursor(False)
+
+    while True:
+        options = _domain_picker_options(domains, filter_text)
+        if default_domain and not filter_text and not default_applied:
+            selected = _default_domain_index(options, default_domain)
+            default_applied = True
+        selected = min(selected, max(len(options) - 1, 0))
+        _draw_domain_picker(screen, options, selected, filter_text)
+
+        key = screen.getch()
+        if key == 27:
+            return None
+        if key in (curses.KEY_UP, ord("k"), ord("K")):
+            selected = max(selected - 1, 0)
+        elif key in (curses.KEY_DOWN, ord("j"), ord("J")):
+            selected = min(selected + 1, max(len(options) - 1, 0))
+        elif key in (ord("\n"), curses.KEY_ENTER, 10, 13):
+            option = options[selected]
+            if option["kind"] == "none":
+                return ""
+            if option["kind"] == "add":
+                return _add_domain_from_prompt(screen, option.get("code") or filter_text)
+            return option["code"]
+        elif key in (curses.KEY_BACKSPACE, 127, 8):
+            filter_text = filter_text[:-1]
+            selected = 0
+            default_applied = True
+        elif key == 21:
+            filter_text = ""
+            selected = 0
+            default_applied = True
+        elif 32 <= key <= 126:
+            filter_text += chr(key)
+            selected = 0
+            default_applied = True
+
+
+def _domain_picker_options(domains: list[dict], filter_text: str) -> list[dict]:
+    query = filter_text.strip().lower()
+    options = []
+
+    if not query or "none".startswith(query):
+        options.append({"kind": "none", "code": "", "name": "No domain"})
+
+    for domain in domains:
+        code = domain.get("code") or domain.get("key") or ""
+        name = domain.get("name") or code
+        haystack = f"{code} {name}".lower()
+        if not query or query in haystack:
+            options.append({"kind": "domain", "code": code, "name": name})
+
+    add_code = query if query else ""
+    exact_code = any(option.get("code") == query for option in options if query)
+    if not exact_code:
+        options.append({"kind": "add", "code": add_code, "name": "Add new domain"})
+
+    return options or [{"kind": "add", "code": add_code, "name": "Add new domain"}]
+
+
+def _draw_domain_picker(
+    screen,
+    options: list[dict],
+    selected: int,
+    filter_text: str,
+) -> None:
+    height, width = screen.getmaxyx()
+    max_options = min(7, max(height - 4, 1))
+    start = max(selected - max_options + 1, 0)
+    visible = options[start : start + max_options]
+    top = max(height - 2 - len(visible), 0)
+
+    for row in range(top, height):
+        _add_line(screen, row, 0, " " * max(width - 1, 0))
+
+    _add_line(screen, top, 0, _truncate(DOMAIN_PICKER_HELP, width - 1), _color(C_MUTED, curses.A_DIM))
+    row = top + 1
+    for index, option in enumerate(visible, start):
+        marker = ">" if index == selected else " "
+        attr = _color(C_FOCUS, curses.A_BOLD) if index == selected else DEFAULT_ATTR
+        _add_line(screen, row, 1, _truncate(f"{marker} {_domain_option_label(option)}", width - 3), attr)
+        row += 1
+
+    prompt = f"Domain: {filter_text}"
+    _add_line(screen, height - 1, 0, _truncate(prompt, width - 1), _color(C_ACCENT, curses.A_BOLD))
+    screen.refresh()
+
+
+def _domain_option_label(option: dict) -> str:
+    if option["kind"] == "none":
+        return "none"
+    if option["kind"] == "add":
+        code = option.get("code") or ""
+        return f"add {code}" if code else "add new domain"
+
+    return f"{option['name']} ({option['code']})"
+
+
+def _add_domain_from_prompt(screen, default_code: str = "") -> str | None:
+    code = _prompt(screen, "Domain code", default=default_code or None)
     if not code:
         return None
 
@@ -627,16 +712,15 @@ def _add_domain_from_prompt(screen) -> str | None:
     return domain["code"]
 
 
-def _default_domain_choice(domains: list[dict], default_domain: str | None) -> str:
+def _default_domain_index(options: list[dict], default_domain: str | None) -> int:
     if not default_domain:
-        return "0"
+        return 0
 
-    for index, domain in enumerate(domains, start=1):
-        code = domain.get("code") or domain.get("key")
-        if code == default_domain:
-            return str(index)
+    for index, option in enumerate(options):
+        if option.get("code") == default_domain:
+            return index
 
-    return "0"
+    return 0
 
 
 def _draw_box(
