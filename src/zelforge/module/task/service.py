@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from zelforge.core.domains import get_default_domain
+from zelforge.core.domains import get_default_domain, resolve_domain_code
 
 from . import storage
 from .models import DEFAULT_PRIORITY, DEFAULT_STATUS, validate_priority, validate_status
@@ -91,7 +91,7 @@ def update_task(
         task["priority"] = validate_priority(priority)
 
     if domain is not None:
-        task["domain"] = domain.strip()
+        task["domain"] = _resolve_domain(domain)
 
     if tags is not None:
         task["tags"] = tags
@@ -260,7 +260,10 @@ def _set_status(task: dict, status: str) -> None:
 
 
 def _resolve_domain(domain: str) -> str:
-    return domain.strip() or get_default_domain() or ""
+    if domain.strip():
+        return resolve_domain_code(domain)
+
+    return get_default_domain() or ""
 
 
 def _require_text(value: str, label: str) -> None:

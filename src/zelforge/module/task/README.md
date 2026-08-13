@@ -33,8 +33,8 @@ generate recurring or repeated tasks from blueprints
 
 ```bash
 zeltask add "Write timer service"
-zeltask add "Index journal vault" --priority high --tag journal --tag index
-zeltask add "Plan career work" --priority 3 --domain career
+zeltask add "Index journal vault" --priority 3 --tag journal --tag index
+zeltask add "Plan career work" --priority 2 --domain cwo
 zeltask list
 zeltask list --all
 zeltask show <task-id>
@@ -62,8 +62,9 @@ zeltask sub remove <task-id> <subtask-id>
 
 `zeltask tui` opens a small curses interface over the same task services used by
 the CLI. It has a ticket-style task list on the left and a detail panel on the
-right. It can browse active or all tasks, create tasks, edit titles, manage
-subtasks, and change task or subtask status.
+right. It can browse active or all tasks, create tasks, select priority/domain
+from small numbered menus, edit titles, manage subtasks, and change task or
+subtask status.
 
 Subtasks are managed from the detail panel. Parent tasks do not automatically
 change status when subtasks are completed; that workflow should remain explicit
@@ -104,15 +105,19 @@ Priorities are defined by the task model in code:
 4 urgent
 ```
 
-`--priority` accepts either the number or label. New task records store the
-normalized number.
+`--priority` accepts the number or label. The TUI is optimized for numeric
+selection using the same `0` to `4` scale.
 
 Domains are shared user state managed by the root `zel` command:
 
 ```bash
 zel domains list
-zel domains add career --name "Career Work"
-zel domains default career
+zel domains add cwo --name "Career Work"
+zel domains add uni --name "University"
+zel domains default cwo
 ```
 
-When a default domain is configured, new tasks use it if `--domain` is omitted.
+The domain code is what you type in commands and what task records store. When a
+default domain is configured, new tasks use it if `--domain` is omitted. In the
+TUI, domain selection is numeric and includes an `a add` option for creating a
+new domain code without leaving the TUI.

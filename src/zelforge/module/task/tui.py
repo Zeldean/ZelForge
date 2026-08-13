@@ -3,8 +3,10 @@ from __future__ import annotations
 import curses
 import textwrap
 
+from zelforge.core import domains as domain_store
+
 from . import service
-from .models import get_priority_label
+from .models import DEFAULT_PRIORITY, TASK_PRIORITIES, get_priority_label
 
 
 HELP_TEXT = (
@@ -323,12 +325,12 @@ def _add_task(screen, state: dict) -> None:
         state["message"] = "cancelled"
         return
 
-    priority = _prompt(screen, "Priority", default="medium")
+    priority = _select_priority(screen)
     if priority is None:
         state["message"] = "cancelled"
         return
 
-    domain = _prompt(screen, "Domain", default="")
+    domain = _select_domain(screen)
     if domain is None:
         state["message"] = "cancelled"
         return
@@ -553,6 +555,88 @@ def _prompt(screen, label: str, default: str | None = None) -> str | None:
         return text
 
     return default
+
+
+def _select_priority(screen) -> int | None:
+    options = "  ".join(
+        f"{value} {label}"
+        for value, label in TASK_PRIORITIES.items()
+    )
+    value = _prompt(screen, f"Priority ({options})", default=str(DEFAULT_PRIORITY))
+    if value is None:
+        return None
+
+    try:
+        return int(value)
+    except ValueError:
+        return DEFAULT_PRIORITY
+
+
+def _select_domain(screen) -> str | None:
+    domains = domain_store.list_domains()
+    default_domain = domain_store.get_default_domain()
+    if not domains:
+        answer = _prompt(screen, "No domains. Add one? y/n", default="n")
+        if answer is None or answer.lower() != "y":
+            return ""
+
+        return _add_domain_from_prompt(screen)
+
+    options = ["0 none"]
+    for index, domain in enumerate(domains, start=1):
+        code = domain.get("code") or domain.get("key") or "-"
+        default_marker = "*" if code == default_domain else ""
+        options.append(f"{index} {code}{default_marker}")
+
+    options.append("a add")
+    value = _prompt(screen, f"Domain ({'  '.join(options)})", default=_default_domain_choice(domains, default_domain))
+    if value is None:
+        return None
+
+    normalized = value.strip().lower()
+    if normalized in {"", "0", "none"}:
+        return ""
+
+    if normalized in {"a", "add", "+"}:
+        return _add_domain_from_prompt(screen)
+
+    if normalized.isdigit():
+        index = int(normalized)
+        if index == 0:
+            return ""
+        if 1 <= index <= len(domains):
+            return domains[index - 1].get("code") or domains[index - 1].get("key") or ""
+
+    return normalized
+
+
+def _add_domain_from_prompt(screen) -> str | None:
+    code = _prompt(screen, "Domain code")
+    if not code:
+        return None
+
+    name = _prompt(screen, "Domain name", default=code)
+    if name is None:
+        return None
+
+    try:
+        domain = domain_store.add_domain(code=code, name=name)
+    except ValueError:
+        return code
+
+    return domain["code"]
+
+
+def _default_domain_choice(domains: list[dict], default_domain: str | None) -> str:
+    if not default_domain:
+        return "0"
+
+    for index, domain in enumerate(domains, start=1):
+        code = domain.get("code") or domain.get("key")
+        if code == default_domain:
+            return str(index)
+
+    return "0"
 
 
 def _draw_box(

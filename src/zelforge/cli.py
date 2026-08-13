@@ -199,91 +199,91 @@ def list_domains(
 
 @domains_app.command("add")
 def add_domain(
-    key: str,
+    code: str,
     name: str | None = typer.Option(None, "--name", "-n", help="Display name."),
     description: str = typer.Option("", "--description", "-d", help="Description."),
 ) -> None:
     """Add a shared domain."""
     try:
         domain = domain_store.add_domain(
-            key=key,
+            code=code,
             name=name,
             description=description,
         )
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
-    typer.echo(f"added domain {domain['key']}: {domain['name']}")
+    typer.echo(f"added domain {domain['code']}: {domain['name']}")
 
 
 @domains_app.command("rename")
 def rename_domain(
-    key: str,
-    new_key: str,
+    code: str,
+    new_code: str,
     name: str | None = typer.Option(None, "--name", "-n", help="New display name."),
 ) -> None:
-    """Rename a shared domain key."""
+    """Rename a shared domain code."""
     try:
-        domain = domain_store.rename_domain(key, new_key, name=name)
+        domain = domain_store.rename_domain(code, new_code, name=name)
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
-    typer.echo(f"renamed domain {key} -> {domain['key']}")
+    typer.echo(f"renamed domain {code} -> {domain['code']}")
 
 
 @domains_app.command("deactivate")
-def deactivate_domain(key: str) -> None:
+def deactivate_domain(code: str) -> None:
     """Mark a domain inactive."""
     try:
-        domain = domain_store.set_domain_active(key, False)
+        domain = domain_store.set_domain_active(code, False)
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
-    typer.echo(f"deactivated domain {domain['key']}")
+    typer.echo(f"deactivated domain {domain['code']}")
 
 
 @domains_app.command("activate")
-def activate_domain(key: str) -> None:
+def activate_domain(code: str) -> None:
     """Mark a domain active."""
     try:
-        domain = domain_store.set_domain_active(key, True)
+        domain = domain_store.set_domain_active(code, True)
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
-    typer.echo(f"activated domain {domain['key']}")
+    typer.echo(f"activated domain {domain['code']}")
 
 
 @domains_app.command("remove")
 def remove_domain(
-    key: str,
+    code: str,
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ) -> None:
     """Remove a shared domain."""
-    if not yes and not typer.confirm(f"Remove domain {key}?", default=False):
+    if not yes and not typer.confirm(f"Remove domain {code}?", default=False):
         typer.echo("Remove cancelled.")
         raise typer.Exit()
 
     try:
-        removed = domain_store.remove_domain(key)
+        removed = domain_store.remove_domain(code)
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
     if removed:
-        typer.echo(f"removed domain {key}")
+        typer.echo(f"removed domain {code}")
         return
 
-    typer.echo(f"domain {key} was not set")
+    typer.echo(f"domain {code} was not set")
 
 
 @domains_app.command("default")
-def set_default_domain(key: str | None = typer.Argument(None)) -> None:
+def set_default_domain(code: str | None = typer.Argument(None)) -> None:
     """Show or set the default domain."""
-    if key is None:
+    if code is None:
         typer.echo(domain_store.get_default_domain() or "-")
         return
 
     try:
-        default_domain = domain_store.set_default_domain(key)
+        default_domain = domain_store.set_default_domain(code)
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
 
@@ -306,9 +306,10 @@ def _list_domains(include_inactive: bool = False) -> None:
         return
 
     for domain in domains:
-        marker = "*" if domain.get("key") == default_domain else " "
+        code = domain.get("code") or domain.get("key") or "-"
+        marker = "*" if code == default_domain else " "
         active = "" if domain.get("active") is not False else " inactive"
-        typer.echo(f"{marker} {domain['key']:<16} {domain['name']}{active}")
+        typer.echo(f"{marker} {code:<8} {domain['name']}{active}")
 
 
 def _echo_core_paths() -> None:

@@ -35,6 +35,9 @@ def load_domains_data() -> dict[str, Any]:
 
     data.setdefault("default_domain", None)
     data.setdefault("domains", [])
+    for domain in data["domains"]:
+        domain.setdefault("code", domain.get("key"))
+        domain.setdefault("key", domain.get("code"))
     return data
 
 
@@ -52,21 +55,32 @@ def get_default_domain() -> str | None:
     return load_domains_data().get("default_domain")
 
 
+def resolve_domain_code(code: str) -> str:
+    """Return a normalized active domain code or raise a clear error."""
+    normalized_code = _normalize_code(code)
+    domain = _require_domain(load_domains_data()["domains"], normalized_code)
+    if domain.get("active") is False:
+        raise ValueError(f"Domain is inactive: {normalized_code}")
+
+    return domain["code"]
+
+
 def add_domain(
-    key: str,
+    code: str,
     name: str | None = None,
     description: str = "",
 ) -> dict:
     """Add a user domain and return it."""
-    normalized_key = _normalize_key(key)
+    normalized_code = _normalize_code(code)
     data = load_domains_data()
-    if _find_domain(data["domains"], normalized_key):
-        raise ValueError(f"Domain already exists: {normalized_key}")
+    if _find_domain(data["domains"], normalized_code):
+        raise ValueError(f"Domain already exists: {normalized_code}")
 
     now = _now()
     domain = {
-        "key": normalized_key,
-        "name": (name or normalized_key).strip(),
+        "key": normalized_code,
+        "code": normalized_code,
+        "name": (name or normalized_code).strip(),
         "description": description.strip(),
         "active": True,
         "created_at": now,
@@ -77,56 +91,57 @@ def add_domain(
     return domain
 
 
-def rename_domain(key: str, new_key: str, name: str | None = None) -> dict:
-    """Rename a domain key and optionally update its display name."""
-    normalized_key = _normalize_key(key)
-    normalized_new_key = _normalize_key(new_key)
+def rename_domain(code: str, new_code: str, name: str | None = None) -> dict:
+    """Rename a domain code and optionally update its display name."""
+    normalized_code = _normalize_code(code)
+    normalized_new_code = _normalize_code(new_code)
     data = load_domains_data()
-    domain = _require_domain(data["domains"], normalized_key)
-    existing = _find_domain(data["domains"], normalized_new_key)
+    domain = _require_domain(data["domains"], normalized_code)
+    existing = _find_domain(data["domains"], normalized_new_code)
     if existing and existing is not domain:
-        raise ValueError(f"Domain already exists: {normalized_new_key}")
+        raise ValueError(f"Domain already exists: {normalized_new_code}")
 
-    domain["key"] = normalized_new_key
+    domain["key"] = normalized_new_code
+    domain["code"] = normalized_new_code
     if name is not None:
-        domain["name"] = name.strip() or normalized_new_key
-    elif domain.get("name") == normalized_key:
-        domain["name"] = normalized_new_key
+        domain["name"] = name.strip() or normalized_new_code
+    elif domain.get("name") == normalized_code:
+        domain["name"] = normalized_new_code
     domain["updated_at"] = _now()
 
-    if data.get("default_domain") == normalized_key:
-        data["default_domain"] = normalized_new_key
+    if data.get("default_domain") == normalized_code:
+        data["default_domain"] = normalized_new_code
 
     _save_domains_data(data)
     return domain
 
 
-def set_domain_active(key: str, active: bool) -> dict:
+def set_domain_active(code: str, active: bool) -> dict:
     """Set whether a domain is active."""
-    normalized_key = _normalize_key(key)
+    normalized_code = _normalize_code(code)
     data = load_domains_data()
-    domain = _require_domain(data["domains"], normalized_key)
+    domain = _require_domain(data["domains"], normalized_code)
     domain["active"] = active
     domain["updated_at"] = _now()
 
-    if not active and data.get("default_domain") == normalized_key:
+    if not active and data.get("default_domain") == normalized_code:
         data["default_domain"] = None
 
     _save_domains_data(data)
     return domain
 
 
-def remove_domain(key: str) -> bool:
+def remove_domain(code: str) -> bool:
     """Remove a domain. Returns whether it existed."""
-    normalized_key = _normalize_key(key)
+    normalized_code = _normalize_code(code)
     data = load_domains_data()
     original_count = len(data["domains"])
     data["domains"] = [
-        domain for domain in data["domains"] if domain.get("key") != normalized_key
+        domain for domain in data["domains"] if domain.get("code") != normalized_code
     ]
     removed = len(data["domains"]) != original_count
 
-    if data.get("default_domain") == normalized_key:
+    if data.get("default_domain") == normalized_code:
         data["default_domain"] = None
 
     if removed:
@@ -135,22 +150,22 @@ def remove_domain(key: str) -> bool:
     return removed
 
 
-def set_default_domain(key: str | None) -> str | None:
+def set_default_domain(code: str | None) -> str | None:
     """Set or clear the default domain."""
     data = load_domains_data()
-    if key is None:
+    if code is None:
         data["default_domain"] = None
         _save_domains_data(data)
         return None
 
-    normalized_key = _normalize_key(key)
-    domain = _require_domain(data["domains"], normalized_key)
+    normalized_code = _normalize_code(code)
+    domain = _require_domain(data["domains"], normalized_code)
     if domain.get("active") is False:
-        raise ValueError(f"Cannot set inactive domain as default: {normalized_key}")
+        raise ValueError(f"Cannot set inactive domain as default: {normalized_code}")
 
-    data["default_domain"] = normalized_key
+    data["default_domain"] = normalized_code
     _save_domains_data(data)
-    return normalized_key
+    return normalized_code
 
 
 def _save_domains_data(data: dict[str, Any]) -> dict[str, Any]:
@@ -166,29 +181,29 @@ def _make_data() -> dict[str, Any]:
     return data
 
 
-def _find_domain(domains: list[dict], key: str) -> dict | None:
+def _find_domain(domains: list[dict], code: str) -> dict | None:
     for domain in domains:
-        if domain.get("key") == key:
+        if domain.get("code") == code or domain.get("key") == code:
             return domain
 
     return None
 
 
-def _require_domain(domains: list[dict], key: str) -> dict:
-    domain = _find_domain(domains, key)
+def _require_domain(domains: list[dict], code: str) -> dict:
+    domain = _find_domain(domains, code)
     if not domain:
-        raise ValueError(f"Unknown domain: {key}")
+        raise ValueError(f"Unknown domain: {code}")
 
     return domain
 
 
-def _normalize_key(key: str) -> str:
-    normalized = key.strip().lower()
+def _normalize_code(code: str) -> str:
+    normalized = code.strip().lower()
     if not normalized:
-        raise ValueError("Domain key cannot be blank")
+        raise ValueError("Domain code cannot be blank")
 
     if any(character.isspace() for character in normalized):
-        raise ValueError("Domain key cannot contain whitespace")
+        raise ValueError("Domain code cannot contain whitespace")
 
     return normalized
 

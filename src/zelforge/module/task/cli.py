@@ -29,9 +29,14 @@ def init() -> None:
 def add(
     title: str,
     description: str = typer.Option("", "--description", "-d", help="Task description."),
-    priority: str = typer.Option("medium", "--priority", "-p", help="Task priority."),
+    priority: str = typer.Option(
+        "2",
+        "--priority",
+        "-p",
+        help="Task priority: 0 none, 1 low, 2 medium, 3 high, 4 urgent.",
+    ),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Task tag."),
-    domain: str = typer.Option("", "--domain", help="Task domain or project."),
+    domain: str = typer.Option("", "--domain", help="Task domain code."),
 ) -> None:
     """Create a new task."""
     try:
@@ -92,8 +97,13 @@ def edit(
     task_ref: str,
     title: str | None = typer.Option(None, "--title", help="New task title."),
     description: str | None = typer.Option(None, "--description", "-d", help="New description."),
-    priority: str | None = typer.Option(None, "--priority", "-p", help="New priority."),
-    domain: str | None = typer.Option(None, "--domain", help="New domain or project."),
+    priority: str | None = typer.Option(
+        None,
+        "--priority",
+        "-p",
+        help="New priority: 0 none, 1 low, 2 medium, 3 high, 4 urgent.",
+    ),
+    domain: str | None = typer.Option(None, "--domain", help="New domain code."),
     tag: list[str] | None = typer.Option(None, "--tag", "-t", help="Replace task tags."),
     status: str | None = typer.Option(None, "--status", "-s", help="New task status."),
 ) -> None:
