@@ -1,0 +1,372 @@
+Screen {
+    background: $surface-darken-1;
+}
+
+Page {
+    padding: 1 2;
+}
+
+.page-hint {
+    color: $text-muted;
+    height: auto;
+    margin: 0 0 1 0;
+}
+
+/* --- Home ------------------------------------------------------------ */
+
+#home-character {
+    border: round $accent;
+    background: $surface;
+    padding: 1 2;
+    height: auto;
+    margin: 1 2 0 2;
+}
+
+#home-level {
+    width: auto;
+    color: $accent;
+    text-style: bold;
+    margin-right: 2;
+}
+
+#home-character-info {
+    width: 1fr;
+    height: auto;
+}
+
+#home-title {
+    color: $accent;
+    text-style: bold;
+}
+
+#home-xpbar {
+    margin-top: 1;
+}
+
+#home-stats {
+    height: auto;
+    margin: 1 2;
+}
+
+.home-card {
+    border: round $primary-muted;
+    background: $surface;
+    padding: 0 1;
+    width: 1fr;
+    height: 4;
+    margin-right: 1;
+    color: $text-muted;
+}
+
+#home-activity-title {
+    color: $accent;
+    text-style: bold;
+    margin: 0 2;
+}
+
+#home-activity {
+    color: $text-muted;
+    margin: 0 2;
+    height: auto;
+}
+
+/* --- Tasks / Timer / Repos (DataTable pages) -------------------------- */
+
+DataTable {
+    height: 1fr;
+}
+
+RichLog {
+    height: 1fr;
+    border: round $primary-muted;
+}
+
+/* --- Trackers ---------------------------------------------------------- */
+
+#trackers-grid {
+    layout: grid;
+    grid-size: 3;
+    grid-gutter: 1 2;
+    padding: 1 2;
+    height: 1fr;
+}
+
+.block {
+    border: round $primary-muted;
+    background: $surface;
+    padding: 1 2;
+    height: 100%;
+    align: center middle;
+}
+
+.block:focus {
+    border: round $accent;
+    background: $surface-lighten-1;
+}
+
+#tracker-water-glass {
+    margin-bottom: 1;
+}
+
+Sparkline {
+    width: 100%;
+    height: 3;
+}
+
+MoodStrip {
+    margin-top: 1;
+}
+
+HabitHeatmap {
+    margin-top: 1;
+}
+
+#tracker-dose-list {
+    height: auto;
+    width: 100%;
+}
+
+.dose-row {
+    height: 1;
+    color: $text-muted;
+}
+
+.dose-selected {
+    color: $accent;
+    text-style: bold;
+}
+
+.dose-taken {
+    color: $success;
+}
+
+.dose-empty {
+    color: $text-muted;
+}
+
+/* --- Levels ------------------------------------------------------------ */
+
+#levels-character {
+    border: round $accent;
+    background: $surface;
+    padding: 1 2;
+    height: auto;
+    margin: 1 2 0 2;
+}
+
+#levels-character-top {
+    height: auto;
+    align: left middle;
+}
+
+#levels-char-level {
+    width: auto;
+    color: $accent;
+    text-style: bold;
+    margin-right: 2;
+}
+
+#levels-character-info {
+    width: 1fr;
+    height: auto;
+}
+
+#levels-char-title {
+    color: $accent;
+    text-style: bold;
+}
+
+#levels-char-xpbar {
+    margin-top: 1;
+}
+
+#levels-char-stat {
+    color: $text-muted;
+}
+
+#levels-grid {
+    layout: grid;
+    grid-size: 3;
+    grid-gutter: 1 2;
+    padding: 1 2;
+    height: 1fr;
+}
+
+.domain-top {
+    height: auto;
+    align: left middle;
+    width: 100%;
+}
+
+.domain-info {
+    width: 1fr;
+    height: auto;
+}
+
+.domain #level {
+    width: auto;
+    margin-right: 2;
+}
+
+#stat {
+    color: $text-muted;
+    margin-top: 1;
+}
+
+.domain-career #level, .domain-career XPBar .xp-bar--fill { color: ansi_blue; }
+.domain-health #level, .domain-health XPBar .xp-bar--fill { color: ansi_green; }
+.domain-learning #level, .domain-learning XPBar .xp-bar--fill { color: ansi_cyan; }
+.domain-creative #level, .domain-creative XPBar .xp-bar--fill { color: ansi_magenta; }
+.domain-social #level, .domain-social XPBar .xp-bar--fill { color: ansi_yellow; }
+
+.domain-career.block:focus { border: round ansi_blue; }
+.domain-health.block:focus { border: round ansi_green; }
+.domain-learning.block:focus { border: round ansi_cyan; }
+.domain-creative.block:focus { border: round ansi_magenta; }
+.domain-social.block:focus { border: round ansi_yellow; }
+
+/* --- Timer -------------------------------------------------------------- */
+
+#timer-grid {
+    layout: grid;
+    grid-size: 3;
+    grid-gutter: 1 2;
+    padding: 1 2;
+    height: 1fr;
+}
+
+.timer-domain {
+    align: center top;
+}
+
+#timer-total {
+    width: auto;
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#timer-sessions {
+    width: 100%;
+    height: 1fr;
+}
+
+.session-row {
+    height: 1;
+    color: $text-muted;
+}
+
+.session-running {
+    color: $accent;
+    text-style: bold;
+}
+
+.domain-career #timer-total { color: ansi_blue; }
+.domain-health #timer-total { color: ansi_green; }
+.domain-learning #timer-total { color: ansi_cyan; }
+.domain-creative #timer-total { color: ansi_magenta; }
+.domain-social #timer-total { color: ansi_yellow; }
+
+/* --- Notes -------------------------------------------------------------- */
+
+#notes-body {
+    height: 1fr;
+    padding: 1 2;
+}
+
+#notes-sidebar {
+    width: 28;
+    height: 100%;
+    margin-right: 2;
+}
+
+#notes-list {
+    height: 1fr;
+}
+
+#notes-buttons {
+    height: auto;
+    margin-top: 1;
+}
+
+#notes-editor-panel {
+    width: 1fr;
+    height: 100%;
+}
+
+#notes-editor {
+    height: 1fr;
+    margin-top: 1;
+}
+
+#notes-preview {
+    height: 1fr;
+    margin-top: 1;
+    border: round $primary-muted;
+    padding: 0 1;
+}
+
+/* --- Achievements --------------------------------------------------- */
+
+#achievements-grid {
+    layout: grid;
+    grid-size: 2;
+    grid-gutter: 1 2;
+    padding: 1 2;
+}
+
+.achievement-card {
+    border: round $primary-muted;
+    padding: 1 2;
+    height: auto;
+    color: $text-muted;
+}
+
+.achievement-unlocked {
+    border: round $success;
+    color: $success;
+    text-style: bold;
+}
+
+/* --- Schedule ------------------------------------------------------- */
+
+#schedule-ruler {
+    color: $text-muted;
+    margin-bottom: 1;
+}
+
+.schedule-row {
+    margin-bottom: 1;
+}
+
+/* --- Repos ------------------------------------------------------------ */
+
+#repos-loading {
+    height: 3;
+}
+
+/* --- Profile ----------------------------------------------------------- */
+
+#profile-name {
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#profile-stats {
+    color: $text-muted;
+    margin-bottom: 1;
+}
+
+#profile-theme-label {
+    color: $text-muted;
+    margin-bottom: 1;
+}
+
+#profile-themes {
+    height: auto;
+}
+
+.theme-btn {
+    margin-right: 1;
+}

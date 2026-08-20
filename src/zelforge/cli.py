@@ -29,6 +29,7 @@ MODULES = [
     ("repo", "zelrepo", "Index and inspect local repositories."),
     ("habit", "zelhabit", "Track daily habits."),
     ("block", "zelblock", "Plan time blocks."),
+    ("sandbox", "zelsandbox", "Standalone TUI mockups for testing frontends."),
 ]
 
 

@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "typer>=0.12",
+  "textual>=8.2",
 ]
 
 [project.scripts]
@@ -23,6 +24,7 @@ zelscript = "zelforge.module.script.cli:cli"
 zelrepo = "zelforge.module.repo.cli:cli"
 zelhabit = "zelforge.module.habit.cli:cli"
 zelblock = "zelforge.module.block.cli:cli"
+zelsandbox = "zelforge.module.sandbox.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]

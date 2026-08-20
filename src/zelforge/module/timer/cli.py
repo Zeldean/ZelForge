@@ -16,6 +16,12 @@ cli = app
 def main() -> None:
     """Track named timers and work sessions."""
 
+@app.command()
+def tui() -> None:
+    """Open the interactive timer TUI."""
+    from .tui import run
+
+    run()
 
 @app.command()
 def init() -> None:
@@ -175,14 +181,6 @@ def status(
             f"{'':>{len(started) if group['sessions'] else 5}}    "
             f"{'':<{stop_width}}  {_format_duration(group['total_seconds'])}"
         )
-
-
-@app.command()
-def tui() -> None:
-    """Open the interactive timer TUI."""
-    from .tui import run
-
-    run()
 
 
 @app.command()
