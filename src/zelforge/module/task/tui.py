@@ -13,12 +13,10 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen
-from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, OptionList, Static
-from textual.widgets.option_list import Option
+from textual.widgets import Footer, Header, Label, ListItem, ListView, Static
 
 from zelforge.core import domains as domain_store
-from zelforge.core.tui.components import ConfirmScreen, PromptScreen
+from zelforge.core.tui.components import ConfirmScreen, DomainPickerScreen, PromptScreen
 
 from . import service
 from .models import DEFAULT_PRIORITY, TASK_PRIORITIES, get_priority_label
@@ -61,148 +59,6 @@ def _task_summary_line(task: dict) -> str:
 
 def _subtask_summary_line(subtask: dict) -> str:
     return f"{_status_icon(subtask)} {subtask['title']}"
-
-
-def _domain_picker_options(domains: list[dict], filter_text: str) -> list[dict]:
-    query = filter_text.strip().lower()
-    options = []
-
-    if not query or "none".startswith(query):
-        options.append({"kind": "none", "code": "", "name": "No domain"})
-
-    for domain in domains:
-        code = domain.get("code") or domain.get("key") or ""
-        name = domain.get("name") or code
-        haystack = f"{code} {name}".lower()
-        if not query or query in haystack:
-            options.append({"kind": "domain", "code": code, "name": name})
-
-    add_code = query if query else ""
-    exact_code = any(option.get("code") == query for option in options if query)
-    if not exact_code:
-        options.append({"kind": "add", "code": add_code, "name": "Add new domain"})
-
-    return options or [{"kind": "add", "code": add_code, "name": "Add new domain"}]
-
-
-def _domain_option_label(option: dict) -> str:
-    if option["kind"] == "none":
-        return "none"
-    if option["kind"] == "add":
-        code = option.get("code") or ""
-        return f"add {code}" if code else "add new domain"
-
-    return f"{option['name']} ({option['code']})"
-
-
-def _default_domain_index(options: list[dict], default_domain: str | None) -> int:
-    if not default_domain:
-        return 0
-
-    for index, option in enumerate(options):
-        if option.get("code") == default_domain:
-            return index
-
-    return 0
-
-
-class DomainPickerScreen(ModalScreen[str | None]):
-    """Type-to-filter picker for a task's domain, with an inline
-    'add new domain' flow — mirrors the old curses fuzzy picker."""
-
-    DEFAULT_CSS = """
-    DomainPickerScreen {
-        align: center middle;
-    }
-    DomainPickerScreen > Vertical {
-        width: 60;
-        height: 20;
-        border: round $accent;
-        padding: 1 2;
-        background: $surface;
-    }
-    DomainPickerScreen Input {
-        margin-bottom: 1;
-    }
-    DomainPickerScreen OptionList {
-        height: 1fr;
-    }
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._domains = domain_store.list_domains()
-        self._default_domain = domain_store.get_default_domain()
-        self._current_options: list[dict] = []
-
-    def compose(self) -> ComposeResult:
-        with Vertical():
-            yield Input(placeholder="type to filter", id="filter")
-            yield OptionList(id="options")
-
-    def on_mount(self) -> None:
-        self._refresh_options("")
-        self.query_one("#filter", Input).focus()
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        self._refresh_options(event.value)
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        options = self.query_one("#options", OptionList)
-        self._choose(options.highlighted or 0)
-
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        self._choose(event.index)
-
-    def key_escape(self) -> None:
-        self.dismiss(None)
-
-    def _refresh_options(self, query: str) -> None:
-        self._current_options = _domain_picker_options(self._domains, query)
-        options = self.query_one("#options", OptionList)
-        options.clear_options()
-        for option in self._current_options:
-            options.add_option(Option(_domain_option_label(option)))
-
-        if not query and self._default_domain:
-            options.highlighted = _default_domain_index(self._current_options, self._default_domain)
-
-    def _choose(self, index: int | None) -> None:
-        if index is None or index >= len(self._current_options):
-            self.dismiss(None)
-            return
-
-        option = self._current_options[index]
-        if option["kind"] == "none":
-            self.dismiss("")
-            return
-
-        if option["kind"] == "add":
-            self._start_add_domain(option.get("code") or "")
-            return
-
-        self.dismiss(option["code"])
-
-    def _start_add_domain(self, default_code: str) -> None:
-        def handle_name(code: str, name: str | None) -> None:
-            if name is None:
-                self.dismiss(None)
-                return
-
-            try:
-                domain = domain_store.add_domain(code=code, name=name)
-                self.dismiss(domain["code"])
-            except ValueError:
-                self.dismiss(code)
-
-        def handle_code(code: str | None) -> None:
-            if not code:
-                self.dismiss(None)
-                return
-
-            self.app.push_screen(PromptScreen("Domain name", default=code), lambda n: handle_name(code, n))
-
-        self.app.push_screen(PromptScreen("Domain code", default=default_code), handle_code)
 
 
 class TaskApp(App):
