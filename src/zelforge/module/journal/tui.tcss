@@ -1,0 +1,31 @@
+Screen {
+    background: $surface-darken-1;
+}
+
+#editor {
+    height: 1fr;
+    margin: 0 2;
+    border: round $primary-muted;
+}
+
+#tag-suggestions {
+    height: auto;
+    min-height: 1;
+    color: $accent;
+    text-style: bold;
+    padding: 0 2;
+}
+
+#meta-row {
+    height: 3;
+    padding: 0 2 1 2;
+}
+
+#tags-input {
+    width: 1fr;
+    margin-right: 2;
+}
+
+#domain-input {
+    width: 24;
+}
