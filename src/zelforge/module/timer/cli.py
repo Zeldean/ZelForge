@@ -8,20 +8,17 @@ from zelforge.module.timer import service
 from zelforge.module.timer import storage
 
 
-app = typer.Typer(help="Timer commands.", no_args_is_help=True)
+app = typer.Typer(help="Timer commands.")
 cli = app
 
 
-@app.callback()
-def main() -> None:
-    """Track named timers and work sessions."""
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """Track named timers and work sessions. Bare command opens the TUI."""
+    if ctx.invoked_subcommand is None:
+        from .tui import run
 
-@app.command()
-def tui() -> None:
-    """Open the interactive timer TUI."""
-    from .tui import run
-
-    run()
+        run()
 
 @app.command()
 def init() -> None:

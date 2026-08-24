@@ -1,510 +1,32 @@
+"""Task TUI, built on Textual.
+
+Feature parity with the previous curses version: a task list on the left,
+details (meta, description, subtasks) on the right, add/edit/done/cancel/
+reopen for both tasks and subtasks, and the same interactive fuzzy domain
+picker for assigning a task's domain.
+"""
+
 from __future__ import annotations
 
-import curses
 import textwrap
+from pathlib import Path
+
+from textual.app import App, ComposeResult
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
+from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, OptionList, Static
+from textual.widgets.option_list import Option
 
 from zelforge.core import domains as domain_store
+from zelforge.core.tui.components import ConfirmScreen, PromptScreen
 
 from . import service
 from .models import DEFAULT_PRIORITY, TASK_PRIORITIES, get_priority_label
 
 
-HELP_TEXT = (
-    "q quit  tab active/all  left/right focus  up/down select  "
-    "a task  s subtask  e edit  d done  c cancel  o reopen  x remove subtask"
-)
-DOMAIN_PICKER_HELP = "type to filter  up/down select  enter choose  esc cancel"
-DEFAULT_ATTR = curses.A_NORMAL
-COLORS_ENABLED = False
-C_HEADER = 2
-C_MUTED = 3
-C_BORDER = 4
-C_FOCUS = 5
-C_DONE = 6
-C_MESSAGE = 7
-C_CANCELLED = 8
-C_ACCENT = 9
-FOCUS_TASKS = "tasks"
-FOCUS_SUBTASKS = "subtasks"
-
-
 def run() -> None:
     """Run the task TUI."""
-    curses.wrapper(_run)
-
-
-def _run(screen) -> None:
-    _init_colors(screen)
-    _set_cursor(False)
-    screen.keypad(True)
-    state = {
-        "focus": FOCUS_TASKS,
-        "selected": 0,
-        "subtask_selected": 0,
-        "offset": 0,
-        "subtask_offset": 0,
-        "include_all": False,
-        "message": "",
-    }
-
-    while True:
-        tasks = _load_tasks(state)
-        selected = min(state["selected"], max(len(tasks) - 1, 0))
-        state["selected"] = selected
-        if tasks:
-            subtasks = _focused_subtasks(tasks[selected])
-            state["subtask_selected"] = min(
-                state["subtask_selected"],
-                max(len(subtasks) - 1, 0),
-            )
-        else:
-            state["subtask_selected"] = 0
-
-        _draw(screen, tasks, state)
-
-        key = screen.getch()
-        if key in (ord("q"), ord("Q")):
-            return
-        if key in (curses.KEY_LEFT, ord("h"), ord("H")):
-            state["focus"] = FOCUS_TASKS
-        elif key in (curses.KEY_RIGHT, ord("l"), ord("L"), ord("\n"), curses.KEY_ENTER):
-            if tasks:
-                state["focus"] = FOCUS_SUBTASKS
-        elif key in (curses.KEY_UP, ord("k"), ord("K")):
-            _move_selection(tasks, state, -1)
-        elif key in (curses.KEY_DOWN, ord("j"), ord("J")):
-            _move_selection(tasks, state, 1)
-        elif key in (ord("\t"),):
-            state["include_all"] = not state["include_all"]
-            state["selected"] = 0
-            state["subtask_selected"] = 0
-            state["offset"] = 0
-            state["subtask_offset"] = 0
-            state["focus"] = FOCUS_TASKS
-            state["message"] = _mode_message(state)
-        elif key in (ord("r"), ord("R")):
-            state["message"] = "refreshed"
-        elif key in (ord("a"), ord("A")):
-            _add_task(screen, state)
-        elif key in (ord("s"), ord("S")):
-            _add_subtask(screen, tasks, selected, state)
-        elif key in (ord("e"), ord("E")):
-            _edit_focused(screen, tasks, selected, state)
-        elif key in (ord("d"), ord("D")):
-            _update_focused(tasks, selected, state, "done")
-        elif key in (ord("c"), ord("C")):
-            _update_focused(tasks, selected, state, "cancelled")
-        elif key in (ord("o"), ord("O")):
-            _update_focused(tasks, selected, state, "active")
-        elif key in (ord("x"), ord("X")):
-            _remove_focused_subtask(screen, tasks, selected, state)
-
-
-def _load_tasks(state: dict) -> list[dict]:
-    return service.list_tasks(include_all=state["include_all"])
-
-
-def _draw(screen, tasks: list[dict], state: dict) -> None:
-    screen.erase()
-    height, width = screen.getmaxyx()
-    mode = "all" if state["include_all"] else "active"
-    _add_line(screen, 0, 1, f"ZelTask ({mode})", _color(C_HEADER, curses.A_BOLD))
-    _add_line(screen, 1, 1, _truncate(HELP_TEXT, width - 3), _color(C_MUTED, curses.A_DIM))
-
-    if state.get("message"):
-        _add_line(screen, 2, 1, _truncate(state["message"], width - 3), _color(C_MESSAGE))
-
-    if width < 72 or height < 14:
-        _draw_small(screen, tasks, state, height, width)
-        screen.refresh()
-        return
-
-    list_width = _task_panel_width(tasks, width)
-    detail_width = width - list_width - 4
-    panel_top = 4
-    panel_height = height - panel_top - 1
-
-    _draw_box(
-        screen,
-        panel_top,
-        1,
-        panel_height,
-        list_width,
-        "Tasks",
-        focused=state["focus"] == FOCUS_TASKS,
-    )
-    _draw_box(
-        screen,
-        panel_top,
-        list_width + 2,
-        panel_height,
-        detail_width,
-        "Details",
-        focused=state["focus"] == FOCUS_SUBTASKS,
-    )
-
-    if not tasks:
-        _add_line(screen, panel_top + 2, 3, "No tasks")
-        screen.refresh()
-        return
-
-    _draw_task_tickets(screen, tasks, state, panel_top + 1, 2, panel_height - 2, list_width - 2)
-    _draw_detail_panel(
-        screen,
-        tasks[state["selected"]],
-        state,
-        panel_top + 1,
-        list_width + 3,
-        panel_height - 2,
-        detail_width - 2,
-    )
-    screen.refresh()
-
-
-def _draw_small(screen, tasks: list[dict], state: dict, height: int, width: int) -> None:
-    if not tasks:
-        _add_line(screen, 4, 1, "No tasks")
-        return
-
-    row = 4
-    offset = _visible_offset(tasks, state, height - 4, "offset", "selected")
-    for index, task in enumerate(tasks[offset:], offset):
-        if row >= height - 1:
-            break
-
-        marker = ">" if index == state["selected"] else " "
-        line = f"{marker} {_task_summary_line(task)}"
-        _add_line(screen, row, 1, _truncate(line, width - 2))
-        row += 1
-
-
-def _draw_task_tickets(
-    screen,
-    tasks: list[dict],
-    state: dict,
-    top: int,
-    left: int,
-    height: int,
-    width: int,
-) -> None:
-    ticket_height = 4
-    visible_count = max(height // ticket_height, 1)
-    offset = _visible_offset(tasks, state, visible_count, "offset", "selected")
-    row = top
-
-    for index, task in enumerate(tasks[offset : offset + visible_count], offset):
-        selected = index == state["selected"]
-        attr = _task_attr(task, selected)
-        _draw_box(screen, row, left, 3, width, "", focused=selected)
-        _add_line(screen, row + 1, left + 2, _truncate(_task_summary_line(task), width - 4), attr)
-        meta = (
-            f"{task['id'][:8]}  {task['status']}  "
-            f"{get_priority_label(task.get('priority'))}"
-        )
-        _add_line(screen, row + 2, left + 2, _truncate(meta, width - 4), _color(C_MUTED, curses.A_DIM))
-        row += ticket_height
-
-
-def _task_panel_width(tasks: list[dict], screen_width: int) -> int:
-    if not tasks:
-        return min(38, max(screen_width - 46, 28))
-
-    content_width = max(
-        [
-            len(_task_summary_line(task))
-            for task in tasks
-        ]
-        + [len("Tasks")]
-    )
-    desired = content_width + 6
-    max_width = max(min(screen_width - 48, 64), 34)
-    return max(min(desired, max_width), 34)
-
-
-def _draw_detail_panel(
-    screen,
-    task: dict,
-    state: dict,
-    top: int,
-    left: int,
-    height: int,
-    width: int,
-) -> None:
-    row = top + 1
-    _add_line(screen, row, left, _truncate(task["title"], width), _color(C_HEADER, curses.A_BOLD))
-    row += 2
-
-    meta_lines = [
-        f"id        {task['id'][:8]}",
-        f"status    {task['status']}",
-        f"priority  {get_priority_label(task.get('priority'))}",
-        f"domain    {_domain_label(task.get('domain'))}",
-        f"tags      {', '.join(task.get('tags', [])) or '-'}",
-    ]
-    for line in meta_lines:
-        if row >= top + height:
-            return
-        _add_line(screen, row, left, _truncate(line, width))
-        row += 1
-
-    row += 1
-    _add_line(screen, row, left, "Description", _color(C_ACCENT, curses.A_BOLD))
-    row += 1
-    for line in _wrap(task.get("description") or "-", width):
-        if row >= top + height:
-            return
-        _add_line(screen, row, left, line)
-        row += 1
-
-    row += 1
-    if row >= top + height:
-        return
-    _add_line(
-        screen,
-        row,
-        left,
-        f"Subtasks {_subtask_summary(task.get('subtasks', []))}",
-        _color(C_ACCENT, curses.A_BOLD),
-    )
-    row += 1
-    _draw_subtasks(screen, task, state, row, left, top + height - row, width)
-
-
-def _draw_subtasks(
-    screen,
-    task: dict,
-    state: dict,
-    top: int,
-    left: int,
-    height: int,
-    width: int,
-) -> None:
-    subtasks = task.get("subtasks", [])
-    if not subtasks:
-        _add_line(screen, top, left, "-")
-        return
-
-    offset = _visible_offset(
-        subtasks,
-        state,
-        height,
-        "subtask_offset",
-        "subtask_selected",
-    )
-    for index, subtask in enumerate(subtasks[offset:], offset):
-        row = top + index - offset
-        if row >= top + height:
-            break
-
-        selected = state["focus"] == FOCUS_SUBTASKS and index == state["subtask_selected"]
-        marker = ">" if selected else " "
-        line = f"{marker} {_status_icon(subtask)} {subtask['title']}"
-        attr = _task_attr(subtask, selected)
-        _add_line(screen, row, left, _truncate(line, width), attr)
-
-
-def _move_selection(tasks: list[dict], state: dict, direction: int) -> None:
-    if state["focus"] == FOCUS_SUBTASKS and tasks:
-        subtasks = _focused_subtasks(tasks[state["selected"]])
-        state["subtask_selected"] = min(
-            max(state["subtask_selected"] + direction, 0),
-            max(len(subtasks) - 1, 0),
-        )
-        return
-
-    state["selected"] = min(
-        max(state["selected"] + direction, 0),
-        max(len(tasks) - 1, 0),
-    )
-    state["subtask_selected"] = 0
-    state["subtask_offset"] = 0
-
-
-def _add_task(screen, state: dict) -> None:
-    title = _prompt(screen, "Task title")
-    if not title:
-        state["message"] = "cancelled"
-        return
-
-    priority = _select_priority(screen)
-    if priority is None:
-        state["message"] = "cancelled"
-        return
-
-    domain = _select_domain(screen)
-    if domain is None:
-        state["message"] = "cancelled"
-        return
-
-    try:
-        task = service.create_task(title=title, priority=priority, domain=domain)
-        state["include_all"] = False
-        state["focus"] = FOCUS_TASKS
-        state["message"] = f"created task {task['id'][:8]}: {task['title']}"
-    except ValueError as error:
-        state["message"] = str(error)
-
-
-def _add_subtask(screen, tasks: list[dict], selected: int, state: dict) -> None:
-    task = _selected_task(tasks, selected)
-    if not task:
-        state["message"] = "no task selected"
-        return
-
-    title = _prompt(screen, "Subtask title")
-    if not title:
-        state["message"] = "cancelled"
-        return
-
-    try:
-        subtask = service.add_subtask(task["id"], title)
-        state["focus"] = FOCUS_SUBTASKS
-        state["subtask_selected"] = len(task.get("subtasks", []))
-        state["message"] = f"created subtask {subtask['id'][:8]}: {subtask['title']}"
-    except ValueError as error:
-        state["message"] = str(error)
-
-
-def _edit_focused(screen, tasks: list[dict], selected: int, state: dict) -> None:
-    task = _selected_task(tasks, selected)
-    if not task:
-        state["message"] = "no task selected"
-        return
-
-    if state["focus"] == FOCUS_SUBTASKS:
-        subtask = _selected_subtask(task, state)
-        if not subtask:
-            state["message"] = "no subtask selected"
-            return
-
-        title = _prompt(screen, "Subtask title", default=subtask["title"])
-        if title is None:
-            state["message"] = "cancelled"
-            return
-
-        try:
-            updated = service.update_subtask(task["id"], subtask["id"], title=title)
-            state["message"] = f"updated subtask {updated['id'][:8]}: {updated['title']}"
-        except ValueError as error:
-            state["message"] = str(error)
-        return
-
-    title = _prompt(screen, "Task title", default=task["title"])
-    if title is None:
-        state["message"] = "cancelled"
-        return
-
-    try:
-        updated = service.update_task(task["id"], title=title)
-        state["message"] = f"updated task {updated['id'][:8]}: {updated['title']}"
-    except ValueError as error:
-        state["message"] = str(error)
-
-
-def _update_focused(
-    tasks: list[dict],
-    selected: int,
-    state: dict,
-    status: str,
-) -> None:
-    task = _selected_task(tasks, selected)
-    if not task:
-        state["message"] = "no task selected"
-        return
-
-    try:
-        if state["focus"] == FOCUS_SUBTASKS:
-            subtask = _selected_subtask(task, state)
-            if not subtask:
-                state["message"] = "no subtask selected"
-                return
-
-            updated = service.update_subtask(task["id"], subtask["id"], status=status)
-            state["message"] = f"{updated['status']} subtask {updated['id'][:8]}"
-            return
-
-        updated = service.update_task(task["id"], status=status)
-        state["message"] = f"{updated['status']} task {updated['id'][:8]}"
-    except ValueError as error:
-        state["message"] = str(error)
-
-
-def _remove_focused_subtask(screen, tasks: list[dict], selected: int, state: dict) -> None:
-    task = _selected_task(tasks, selected)
-    if not task or state["focus"] != FOCUS_SUBTASKS:
-        state["message"] = "focus a subtask first"
-        return
-
-    subtask = _selected_subtask(task, state)
-    if not subtask:
-        state["message"] = "no subtask selected"
-        return
-
-    answer = _prompt(screen, f"Remove '{subtask['title']}'? type yes")
-    if answer != "yes":
-        state["message"] = "cancelled"
-        return
-
-    try:
-        removed = service.remove_subtask(task["id"], subtask["id"])
-        state["subtask_selected"] = max(state["subtask_selected"] - 1, 0)
-        state["message"] = f"removed subtask {removed['id'][:8]}: {removed['title']}"
-    except ValueError as error:
-        state["message"] = str(error)
-
-
-def _selected_task(tasks: list[dict], selected: int) -> dict | None:
-    if not tasks:
-        return None
-
-    return tasks[min(selected, len(tasks) - 1)]
-
-
-def _selected_subtask(task: dict, state: dict) -> dict | None:
-    subtasks = task.get("subtasks", [])
-    if not subtasks:
-        return None
-
-    return subtasks[min(state["subtask_selected"], len(subtasks) - 1)]
-
-
-def _focused_subtasks(task: dict) -> list[dict]:
-    return task.get("subtasks", [])
-
-
-def _mode_message(state: dict) -> str:
-    return "showing all tasks" if state["include_all"] else "showing active tasks"
-
-
-def _task_summary_line(task: dict) -> str:
-    domain = _domain_label(task.get("domain"), empty="")
-    domain_text = f" ({domain})" if domain else ""
-    return (
-        f"{_status_icon(task)} {task['title']}{domain_text} "
-        f"{_subtask_summary(task.get('subtasks', []))}"
-    )
-
-
-def _status_icon(task: dict) -> str:
-    status = task.get("status")
-    if status == "done":
-        return "✓"
-    if status == "cancelled":
-        return "×"
-    return "•"
-
-
-def _task_attr(task: dict, selected: bool = False) -> int:
-    status = task.get("status")
-    style = curses.A_BOLD if selected else curses.A_NORMAL
-    if selected:
-        return _color(C_FOCUS, style)
-    if status == "done":
-        return _color(C_DONE, style)
-    if status == "cancelled":
-        return _color(C_CANCELLED, style)
-
-    return _attr(style)
+    TaskApp().run()
 
 
 def _domain_label(code: str | None, empty: str = "-") -> str:
@@ -522,117 +44,23 @@ def _subtask_summary(subtasks: list[dict]) -> str:
     return f"[{done}/{len(subtasks)}]"
 
 
-def _visible_offset(
-    items: list[dict],
-    state: dict,
-    visible_count: int,
-    offset_key: str,
-    selected_key: str,
-) -> int:
-    selected = state[selected_key]
-    offset = min(state.get(offset_key, 0), selected)
-    visible_count = max(visible_count, 1)
-
-    if selected >= offset + visible_count:
-        offset = selected - visible_count + 1
-
-    state[offset_key] = max(offset, 0)
-    return state[offset_key]
+def _status_icon(item: dict) -> str:
+    status = item.get("status")
+    if status == "done":
+        return "✓"
+    if status == "cancelled":
+        return "×"
+    return "•"
 
 
-def _prompt(screen, label: str, default: str | None = None) -> str | None:
-    height, width = screen.getmaxyx()
-    suffix = f" [{default}]" if default is not None else ""
-    prompt = f"{label}{suffix}: "
-    row = height - 1
-    _add_line(screen, row, 0, " " * max(width - 1, 0))
-    _add_line(screen, row, 0, _truncate(prompt, width - 1))
-    _set_cursor(True)
-    curses.echo()
-
-    try:
-        value = screen.getstr(row, min(len(prompt), max(width - 1, 0)), 200)
-    except KeyboardInterrupt:
-        return None
-    finally:
-        curses.noecho()
-        _set_cursor(False)
-
-    text = value.decode("utf-8").strip()
-    if text:
-        return text
-
-    return default
+def _task_summary_line(task: dict) -> str:
+    domain = _domain_label(task.get("domain"), empty="")
+    domain_text = f" ({domain})" if domain else ""
+    return f"{_status_icon(task)} {task['title']}{domain_text} {_subtask_summary(task.get('subtasks', []))}"
 
 
-def _select_priority(screen) -> int | None:
-    options = "  ".join(
-        f"{value} {label}"
-        for value, label in TASK_PRIORITIES.items()
-    )
-    value = _prompt(screen, f"Priority ({options})", default=str(DEFAULT_PRIORITY))
-    if value is None:
-        return None
-
-    try:
-        return int(value)
-    except ValueError:
-        return DEFAULT_PRIORITY
-
-
-def _select_domain(screen) -> str | None:
-    domains = domain_store.list_domains()
-    if not domains:
-        answer = _prompt(screen, "No domains. Add one? y/n", default="n")
-        if answer is None or answer.lower() != "y":
-            return ""
-
-        return _add_domain_from_prompt(screen)
-
-    return _pick_domain(screen, domains)
-
-
-def _pick_domain(screen, domains: list[dict]) -> str | None:
-    filter_text = ""
-    selected = 0
-    default_domain = domain_store.get_default_domain()
-    default_applied = False
-    _set_cursor(False)
-
-    while True:
-        options = _domain_picker_options(domains, filter_text)
-        if default_domain and not filter_text and not default_applied:
-            selected = _default_domain_index(options, default_domain)
-            default_applied = True
-        selected = min(selected, max(len(options) - 1, 0))
-        _draw_domain_picker(screen, options, selected, filter_text)
-
-        key = screen.getch()
-        if key == 27:
-            return None
-        if key in (curses.KEY_UP, ord("k"), ord("K")):
-            selected = max(selected - 1, 0)
-        elif key in (curses.KEY_DOWN, ord("j"), ord("J")):
-            selected = min(selected + 1, max(len(options) - 1, 0))
-        elif key in (ord("\n"), curses.KEY_ENTER, 10, 13):
-            option = options[selected]
-            if option["kind"] == "none":
-                return ""
-            if option["kind"] == "add":
-                return _add_domain_from_prompt(screen, option.get("code") or filter_text)
-            return option["code"]
-        elif key in (curses.KEY_BACKSPACE, 127, 8):
-            filter_text = filter_text[:-1]
-            selected = 0
-            default_applied = True
-        elif key == 21:
-            filter_text = ""
-            selected = 0
-            default_applied = True
-        elif 32 <= key <= 126:
-            filter_text += chr(key)
-            selected = 0
-            default_applied = True
+def _subtask_summary_line(subtask: dict) -> str:
+    return f"{_status_icon(subtask)} {subtask['title']}"
 
 
 def _domain_picker_options(domains: list[dict], filter_text: str) -> list[dict]:
@@ -657,34 +85,6 @@ def _domain_picker_options(domains: list[dict], filter_text: str) -> list[dict]:
     return options or [{"kind": "add", "code": add_code, "name": "Add new domain"}]
 
 
-def _draw_domain_picker(
-    screen,
-    options: list[dict],
-    selected: int,
-    filter_text: str,
-) -> None:
-    height, width = screen.getmaxyx()
-    max_options = min(7, max(height - 4, 1))
-    start = max(selected - max_options + 1, 0)
-    visible = options[start : start + max_options]
-    top = max(height - 2 - len(visible), 0)
-
-    for row in range(top, height):
-        _add_line(screen, row, 0, " " * max(width - 1, 0))
-
-    _add_line(screen, top, 0, _truncate(DOMAIN_PICKER_HELP, width - 1), _color(C_MUTED, curses.A_DIM))
-    row = top + 1
-    for index, option in enumerate(visible, start):
-        marker = ">" if index == selected else " "
-        attr = _color(C_FOCUS, curses.A_BOLD) if index == selected else DEFAULT_ATTR
-        _add_line(screen, row, 1, _truncate(f"{marker} {_domain_option_label(option)}", width - 3), attr)
-        row += 1
-
-    prompt = f"Domain: {filter_text}"
-    _add_line(screen, height - 1, 0, _truncate(prompt, width - 1), _color(C_ACCENT, curses.A_BOLD))
-    screen.refresh()
-
-
 def _domain_option_label(option: dict) -> str:
     if option["kind"] == "none":
         return "none"
@@ -693,23 +93,6 @@ def _domain_option_label(option: dict) -> str:
         return f"add {code}" if code else "add new domain"
 
     return f"{option['name']} ({option['code']})"
-
-
-def _add_domain_from_prompt(screen, default_code: str = "") -> str | None:
-    code = _prompt(screen, "Domain code", default=default_code or None)
-    if not code:
-        return None
-
-    name = _prompt(screen, "Domain name", default=code)
-    if name is None:
-        return None
-
-    try:
-        domain = domain_store.add_domain(code=code, name=name)
-    except ValueError:
-        return code
-
-    return domain["code"]
 
 
 def _default_domain_index(options: list[dict], default_domain: str | None) -> int:
@@ -723,108 +106,386 @@ def _default_domain_index(options: list[dict], default_domain: str | None) -> in
     return 0
 
 
-def _draw_box(
-    screen,
-    top: int,
-    left: int,
-    height: int,
-    width: int,
-    title: str,
-    focused: bool = False,
-) -> None:
-    if height < 2 or width < 4:
-        return
+class DomainPickerScreen(ModalScreen[str | None]):
+    """Type-to-filter picker for a task's domain, with an inline
+    'add new domain' flow — mirrors the old curses fuzzy picker."""
 
-    attr = _color(C_FOCUS if focused else C_BORDER, curses.A_BOLD if focused else curses.A_NORMAL)
-    horizontal = "═" if focused else "─"
-    vertical = "║" if focused else "│"
-    top_left = "╔" if focused else "┌"
-    top_right = "╗" if focused else "┐"
-    bottom_left = "╚" if focused else "└"
-    bottom_right = "╝" if focused else "┘"
+    DEFAULT_CSS = """
+    DomainPickerScreen {
+        align: center middle;
+    }
+    DomainPickerScreen > Vertical {
+        width: 60;
+        height: 20;
+        border: round $accent;
+        padding: 1 2;
+        background: $surface;
+    }
+    DomainPickerScreen Input {
+        margin-bottom: 1;
+    }
+    DomainPickerScreen OptionList {
+        height: 1fr;
+    }
+    """
 
-    _add_line(screen, top, left, top_left + horizontal * (width - 2) + top_right, attr)
-    for row in range(top + 1, top + height - 1):
-        _add_line(screen, row, left, vertical, attr)
-        _add_line(screen, row, left + width - 1, vertical, attr)
-    _add_line(
-        screen,
-        top + height - 1,
-        left,
-        bottom_left + horizontal * (width - 2) + bottom_right,
-        attr,
-    )
+    def __init__(self) -> None:
+        super().__init__()
+        self._domains = domain_store.list_domains()
+        self._default_domain = domain_store.get_default_domain()
+        self._current_options: list[dict] = []
 
-    if title:
-        _add_line(screen, top, left + 2, f" {title} ", attr)
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Input(placeholder="type to filter", id="filter")
+            yield OptionList(id="options")
+
+    def on_mount(self) -> None:
+        self._refresh_options("")
+        self.query_one("#filter", Input).focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self._refresh_options(event.value)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        options = self.query_one("#options", OptionList)
+        self._choose(options.highlighted or 0)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self._choose(event.index)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+    def _refresh_options(self, query: str) -> None:
+        self._current_options = _domain_picker_options(self._domains, query)
+        options = self.query_one("#options", OptionList)
+        options.clear_options()
+        for option in self._current_options:
+            options.add_option(Option(_domain_option_label(option)))
+
+        if not query and self._default_domain:
+            options.highlighted = _default_domain_index(self._current_options, self._default_domain)
+
+    def _choose(self, index: int | None) -> None:
+        if index is None or index >= len(self._current_options):
+            self.dismiss(None)
+            return
+
+        option = self._current_options[index]
+        if option["kind"] == "none":
+            self.dismiss("")
+            return
+
+        if option["kind"] == "add":
+            self._start_add_domain(option.get("code") or "")
+            return
+
+        self.dismiss(option["code"])
+
+    def _start_add_domain(self, default_code: str) -> None:
+        def handle_name(code: str, name: str | None) -> None:
+            if name is None:
+                self.dismiss(None)
+                return
+
+            try:
+                domain = domain_store.add_domain(code=code, name=name)
+                self.dismiss(domain["code"])
+            except ValueError:
+                self.dismiss(code)
+
+        def handle_code(code: str | None) -> None:
+            if not code:
+                self.dismiss(None)
+                return
+
+            self.app.push_screen(PromptScreen("Domain name", default=code), lambda n: handle_name(code, n))
+
+        self.app.push_screen(PromptScreen("Domain code", default=default_code), handle_code)
 
 
-def _wrap(value: str, width: int) -> list[str]:
-    return textwrap.wrap(value, width=max(width, 1)) or [""]
+class TaskApp(App):
+    """Browse tasks and subtasks, edit them, and change their status."""
 
+    CSS_PATH = Path(__file__).parent / "tui.tcss"
+    TITLE = "ZelTask"
 
-def _add_line(screen, row: int, column: int, text: str, attr: int | None = None) -> None:
-    height, width = screen.getmaxyx()
-    if row < 0 or row >= height or column >= width:
-        return
+    BINDINGS = [
+        ("v", "toggle_mode", "Active/All"),
+        ("a", "add_task", "Add Task"),
+        ("s", "add_subtask", "Add Subtask"),
+        ("e", "edit_focused", "Edit"),
+        ("d", "mark_status('done')", "Done"),
+        ("c", "mark_status('cancelled')", "Cancel"),
+        ("o", "mark_status('active')", "Reopen"),
+        ("x", "remove_subtask", "Remove Subtask"),
+        ("r", "refresh", "Refresh"),
+        ("colon", "command_palette", "Commands"),
+        ("q", "quit", "Quit"),
+    ]
 
-    available_width = max(width - column - 1, 0)
-    if available_width:
-        screen.addnstr(
-            row,
-            column,
-            text,
-            available_width,
-            DEFAULT_ATTR if attr is None else attr,
+    def __init__(self) -> None:
+        super().__init__()
+        self.include_all = False
+        self.tasks: list[dict] = []
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield Static("", id="mode-label")
+        with Horizontal(id="panes"):
+            with Vertical(id="task-pane"):
+                yield ListView(id="task-list")
+            with Vertical(id="detail-pane"):
+                yield Static("", id="task-meta")
+                yield Static("", id="task-description")
+                yield Static("Subtasks", id="subtasks-label")
+                yield ListView(id="subtask-list")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        # ansi-dark maps colors to the terminal's own ANSI palette and
+        # leaves the background untouched (transparent here), instead of
+        # painting Textual's truecolor theme over the terminal.
+        self.theme = "ansi-dark"
+        self.refresh_data(preserve_selection=False)
+
+    def refresh_data(self, preserve_selection: bool = True) -> None:
+        self.tasks = service.list_tasks(include_all=self.include_all)
+        self.query_one("#mode-label", Static).update(f"showing {'all' if self.include_all else 'active'} tasks")
+        self._render_task_list(preserve_selection)
+        self._render_detail()
+
+    def _render_task_list(self, preserve_selection: bool) -> None:
+        list_view = self.query_one("#task-list", ListView)
+        previous_index = list_view.index or 0
+        list_view.clear()
+        for task in self.tasks:
+            list_view.append(ListItem(Label(_task_summary_line(task))))
+
+        if self.tasks:
+            list_view.index = min(previous_index, len(self.tasks) - 1) if preserve_selection else 0
+
+    def _render_detail(self) -> None:
+        meta = self.query_one("#task-meta", Static)
+        description = self.query_one("#task-description", Static)
+        subtask_list = self.query_one("#subtask-list", ListView)
+
+        task = self._selected_task()
+        if task is None:
+            meta.update("No tasks")
+            description.update("")
+            subtask_list.clear()
+            return
+
+        meta.update(
+            f"{task['title']}\n"
+            f"id        {task['id'][:8]}\n"
+            f"status    {task['status']}\n"
+            f"priority  {get_priority_label(task.get('priority'))}\n"
+            f"domain    {_domain_label(task.get('domain'))}\n"
+            f"tags      {', '.join(task.get('tags', [])) or '-'}"
         )
+        description.update("\n".join(textwrap.wrap(task.get("description") or "-", width=70)) or "-")
+
+        previous_index = subtask_list.index or 0
+        subtask_list.clear()
+        for subtask in task.get("subtasks", []):
+            subtask_list.append(ListItem(Label(_subtask_summary_line(subtask))))
+
+        subtasks = task.get("subtasks", [])
+        if subtasks:
+            subtask_list.index = min(previous_index, len(subtasks) - 1)
+
+    def _selected_task(self) -> dict | None:
+        if not self.tasks:
+            return None
+
+        list_view = self.query_one("#task-list", ListView)
+        index = min(list_view.index or 0, len(self.tasks) - 1)
+        return self.tasks[index]
+
+    def _selected_subtask(self) -> dict | None:
+        task = self._selected_task()
+        if task is None:
+            return None
+
+        subtasks = task.get("subtasks", [])
+        if not subtasks:
+            return None
+
+        subtask_list = self.query_one("#subtask-list", ListView)
+        index = min(subtask_list.index or 0, len(subtasks) - 1)
+        return subtasks[index]
+
+    def _subtasks_focused(self) -> bool:
+        return self.focused is self.query_one("#subtask-list", ListView)
+
+    # --- actions -------------------------------------------------------
+
+    def action_toggle_mode(self) -> None:
+        self.include_all = not self.include_all
+        self.refresh_data(preserve_selection=False)
+
+    def action_refresh(self) -> None:
+        self.refresh_data(preserve_selection=True)
+        self.notify("refreshed", timeout=1)
+
+    def action_add_task(self) -> None:
+        def handle_domain(title: str, priority: int, domain: str | None) -> None:
+            if domain is None:
+                self.notify("cancelled", timeout=1)
+                return
+
+            try:
+                task = service.create_task(title=title, priority=priority, domain=domain)
+            except ValueError as error:
+                self.notify(str(error), severity="error")
+                return
+
+            self.include_all = False
+            self.refresh_data(preserve_selection=False)
+            self.notify(f"created task {task['id'][:8]}: {task['title']}", timeout=2)
+
+        def handle_priority(title: str, value: str | None) -> None:
+            if value is None:
+                self.notify("cancelled", timeout=1)
+                return
+
+            try:
+                priority = int(value)
+            except ValueError:
+                priority = DEFAULT_PRIORITY
+
+            self.push_screen(DomainPickerScreen(), lambda domain: handle_domain(title, priority, domain))
+
+        def handle_title(title: str | None) -> None:
+            if not title:
+                self.notify("cancelled", timeout=1)
+                return
+
+            options = "  ".join(f"{value} {label}" for value, label in TASK_PRIORITIES.items())
+            self.push_screen(PromptScreen(f"Priority ({options})", default=str(DEFAULT_PRIORITY)), lambda v: handle_priority(title, v))
+
+        self.push_screen(PromptScreen("Task title"), handle_title)
+
+    def action_add_subtask(self) -> None:
+        task = self._selected_task()
+        if task is None:
+            self.notify("no task selected", severity="warning")
+            return
+
+        def handle(title: str | None) -> None:
+            if not title:
+                self.notify("cancelled", timeout=1)
+                return
+
+            try:
+                subtask = service.add_subtask(task["id"], title)
+            except ValueError as error:
+                self.notify(str(error), severity="error")
+                return
+
+            self.refresh_data(preserve_selection=True)
+            self.query_one("#subtask-list", ListView).focus()
+            self.notify(f"created subtask {subtask['id'][:8]}: {subtask['title']}", timeout=2)
+
+        self.push_screen(PromptScreen("Subtask title"), handle)
+
+    def action_edit_focused(self) -> None:
+        task = self._selected_task()
+        if task is None:
+            self.notify("no task selected", severity="warning")
+            return
+
+        if self._subtasks_focused():
+            subtask = self._selected_subtask()
+            if subtask is None:
+                self.notify("no subtask selected", severity="warning")
+                return
+
+            def handle_subtask(title: str | None) -> None:
+                if title is None:
+                    return
+
+                try:
+                    updated = service.update_subtask(task["id"], subtask["id"], title=title)
+                except ValueError as error:
+                    self.notify(str(error), severity="error")
+                    return
+
+                self.refresh_data(preserve_selection=True)
+                self.notify(f"updated subtask {updated['id'][:8]}: {updated['title']}", timeout=2)
+
+            self.push_screen(PromptScreen("Subtask title", default=subtask["title"]), handle_subtask)
+            return
+
+        def handle_task(title: str | None) -> None:
+            if title is None:
+                return
+
+            try:
+                updated = service.update_task(task["id"], title=title)
+            except ValueError as error:
+                self.notify(str(error), severity="error")
+                return
+
+            self.refresh_data(preserve_selection=True)
+            self.notify(f"updated task {updated['id'][:8]}: {updated['title']}", timeout=2)
+
+        self.push_screen(PromptScreen("Task title", default=task["title"]), handle_task)
+
+    def action_mark_status(self, status: str) -> None:
+        task = self._selected_task()
+        if task is None:
+            self.notify("no task selected", severity="warning")
+            return
+
+        try:
+            if self._subtasks_focused():
+                subtask = self._selected_subtask()
+                if subtask is None:
+                    self.notify("no subtask selected", severity="warning")
+                    return
+
+                updated = service.update_subtask(task["id"], subtask["id"], status=status)
+                self.refresh_data(preserve_selection=True)
+                self.notify(f"{updated['status']} subtask {updated['id'][:8]}", timeout=2)
+                return
+
+            updated = service.update_task(task["id"], status=status)
+            self.refresh_data(preserve_selection=True)
+            self.notify(f"{updated['status']} task {updated['id'][:8]}", timeout=2)
+        except ValueError as error:
+            self.notify(str(error), severity="error")
+
+    def action_remove_subtask(self) -> None:
+        task = self._selected_task()
+        if task is None or not self._subtasks_focused():
+            self.notify("focus a subtask first", severity="warning")
+            return
+
+        subtask = self._selected_subtask()
+        if subtask is None:
+            self.notify("no subtask selected", severity="warning")
+            return
+
+        def handle(confirmed: bool) -> None:
+            if not confirmed:
+                self.notify("cancelled", timeout=1)
+                return
+
+            try:
+                removed = service.remove_subtask(task["id"], subtask["id"])
+            except ValueError as error:
+                self.notify(str(error), severity="error")
+                return
+
+            self.refresh_data(preserve_selection=True)
+            self.notify(f"removed subtask {removed['id'][:8]}: {removed['title']}", timeout=2)
+
+        self.push_screen(ConfirmScreen(f"Remove '{subtask['title']}'?"), handle)
 
 
-def _init_colors(screen) -> None:
-    global COLORS_ENABLED, DEFAULT_ATTR
-
-    if not curses.has_colors():
-        return
-
-    try:
-        curses.start_color()
-        curses.use_default_colors()
-        curses.init_pair(1, -1, -1)
-        curses.init_pair(C_HEADER, curses.COLOR_CYAN, -1)
-        curses.init_pair(C_MUTED, curses.COLOR_WHITE, -1)
-        curses.init_pair(C_BORDER, curses.COLOR_BLUE, -1)
-        curses.init_pair(C_FOCUS, curses.COLOR_CYAN, -1)
-        curses.init_pair(C_DONE, curses.COLOR_GREEN, -1)
-        curses.init_pair(C_MESSAGE, curses.COLOR_YELLOW, -1)
-        curses.init_pair(C_CANCELLED, curses.COLOR_RED, -1)
-        curses.init_pair(C_ACCENT, curses.COLOR_MAGENTA, -1)
-        DEFAULT_ATTR = curses.color_pair(1)
-        COLORS_ENABLED = True
-        screen.bkgdset(" ", DEFAULT_ATTR)
-    except curses.error:
-        DEFAULT_ATTR = curses.A_NORMAL
-        COLORS_ENABLED = False
-
-
-def _attr(attr: int) -> int:
-    return DEFAULT_ATTR | attr
-
-
-def _color(pair: int, attr: int = curses.A_NORMAL) -> int:
-    if COLORS_ENABLED:
-        return DEFAULT_ATTR | curses.color_pair(pair) | attr
-
-    return _attr(attr)
-
-
-def _set_cursor(visible: bool) -> None:
-    try:
-        curses.curs_set(1 if visible else 0)
-    except curses.error:
-        pass
-
-
-def _truncate(value: str, width: int) -> str:
-    if width <= 0 or len(value) <= width:
-        return value
-
-    return f"{value[: max(width - 1, 0)]}…"
+if __name__ == "__main__":
+    run()

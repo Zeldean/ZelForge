@@ -42,7 +42,6 @@ zeltask edit <task-id> --title "Write task service"
 zeltask done <task-id>
 zeltask cancel <task-id>
 zeltask reopen <task-id>
-zeltask tui
 ```
 
 Subtask commands:
@@ -58,13 +57,14 @@ zeltask sub reopen <task-id> <subtask-id>
 zeltask sub remove <task-id> <subtask-id>
 ```
 
-## Demo TUI
+## TUI
 
-`zeltask tui` opens a small curses interface over the same task services used by
-the CLI. It has a ticket-style task list on the left and a detail panel on the
-right. It can browse active or all tasks, create tasks, select priority/domain
-from small numbered menus, edit titles, manage subtasks, and change task or
-subtask status.
+Running `zeltask` with no subcommand opens the TUI, built on
+[Textual](https://textual.textualize.io/) (`tui.py` + `tui.tcss`) over the same
+task services used by the CLI. A task list on the left, a detail panel on the
+right. It can browse active or all tasks, create tasks, pick a priority and
+domain (a type-to-filter picker, with an inline "add new domain" flow), edit
+titles, manage subtasks, and change task or subtask status.
 
 Subtasks are managed from the detail panel. Parent tasks do not automatically
 change status when subtasks are completed; that workflow should remain explicit
@@ -73,18 +73,19 @@ until recurring tasks and completion rules are designed.
 Controls:
 
 ```text
-up/down or j/k    select focused item
-left/right or h/l switch task/subtask focus
-tab               switch active/all tasks
-a                 add task
-s                 add subtask to selected task
-e                 edit focused task/subtask title
-d                 mark focused task/subtask done
-c                 cancel focused task/subtask
-o                 reopen focused task/subtask
-x                 remove focused subtask
-r                 refresh
-q                 quit
+tab      move focus between the task list and the subtask list
+up/down  select focused item (native list navigation)
+v        switch active/all tasks
+a        add task
+s        add subtask to selected task
+e        edit focused task/subtask title
+d        mark focused task/subtask done
+c        cancel focused task/subtask
+o        reopen focused task/subtask
+x        remove focused subtask
+r        refresh
+:        command palette
+q        quit
 ```
 
 ## Notes From Old Attempts
@@ -119,5 +120,5 @@ zel domains default cwo
 
 The domain code is what you type in commands and what task records store. When a
 default domain is configured, new tasks use it if `--domain` is omitted. In the
-TUI, domain selection is numeric and includes an `a add` option for creating a
-new domain code without leaving the TUI.
+TUI, domain selection is a type-to-filter picker and includes an "add new
+domain" option for creating a domain code without leaving the TUI.

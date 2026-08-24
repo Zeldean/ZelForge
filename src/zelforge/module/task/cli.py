@@ -15,9 +15,11 @@ cli.add_typer(subtasks_app, name="sub")
 
 @cli.callback(invoke_without_command=True)
 def main(ctx: typer.Context) -> None:
-    """Manage tasks."""
+    """Manage tasks. Bare command opens the TUI."""
     if ctx.invoked_subcommand is None:
-        typer.echo(ctx.get_help())
+        from .tui import run
+
+        run()
 
 
 @cli.command()
@@ -252,14 +254,6 @@ def remove_subtask(task_ref: str, subtask_ref: str) -> None:
         raise typer.BadParameter(str(error)) from error
 
     typer.echo(f"removed subtask {subtask['id'][:8]}: {subtask['title']}")
-
-
-@cli.command()
-def tui() -> None:
-    """Open the interactive task TUI."""
-    from .tui import run
-
-    run()
 
 
 def _format_task_line(task: dict) -> str:

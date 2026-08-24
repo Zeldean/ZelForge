@@ -1,0 +1,55 @@
+Screen {
+    background: $surface-darken-1;
+}
+
+#mode-label {
+    color: $accent;
+    text-style: bold;
+    padding: 0 2;
+}
+
+#panes {
+    height: 1fr;
+    padding: 0 2 1 2;
+}
+
+#task-pane {
+    width: 48;
+    height: 100%;
+    border: round $primary-muted;
+    margin-right: 2;
+}
+
+#task-list {
+    height: 1fr;
+}
+
+#detail-pane {
+    width: 1fr;
+    height: 100%;
+    border: round $primary-muted;
+    padding: 0 1;
+}
+
+#task-meta {
+    color: $accent;
+    text-style: bold;
+    height: auto;
+    margin-bottom: 1;
+}
+
+#task-description {
+    color: $text;
+    height: auto;
+    margin-bottom: 1;
+}
+
+#subtasks-label {
+    color: $accent;
+    text-style: bold;
+    height: auto;
+}
+
+#subtask-list {
+    height: 1fr;
+}

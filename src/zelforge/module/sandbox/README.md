@@ -15,11 +15,16 @@ module with its own service/storage layer.
 - No `service.py` or `storage.py` here on purpose — that's the point.
 - If an idea proves out and needs to persist real data, promote it into its
   own proper module instead of growing this one.
-- This is the one module allowed a real third-party dependency: **Textual**.
-  Every other module (`timer`, etc.) is deliberately stdlib-only so it stays
-  importable by a bare `python3` without the venv. Sandbox has no such
-  constraint — nothing else imports it — so it's the lowest-risk place in the
-  repo to build on a real TUI framework instead of hand-rolled `curses`.
+- This module (and now `timer`/`task`, for their real TUIs) depends on
+  **Textual**. `timer`'s and `task`'s `service.py`/`storage.py` stay
+  stdlib-only on purpose, so scripts can `sys.path.insert` straight to
+  `src/` and import the data layer with a bare `python3` — no venv, no
+  `typer`, no Textual. Their `cli.py` already needed `typer` regardless;
+  what matters is it doesn't *also* need Textual at import time — `tui.py`
+  is imported lazily, only from inside the bare-command branch, so
+  `zeltimer status` (or any other subcommand) never pays for it. Sandbox
+  itself has no callers at all, so it's still the lowest-risk place to try
+  a TUI idea before it's real.
 - `screens.py`, `commands.py`, and `graphics.py` hold small pieces shared by
   everything in this module (a prompt dialog, a command-palette provider,
   custom Rich-rendered widgets like the water glass, XP bar, streak heatmap,

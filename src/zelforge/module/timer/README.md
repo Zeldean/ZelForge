@@ -42,31 +42,33 @@ zeltimer status code
 zeltimer status --date 2026-08-12
 zeltimer status --start-date 2026-08-01 --end-date 2026-08-12
 zeltimer status code --date 2026-08-12
-zeltimer tui
 zeltimer sessions
 zeltimer save
 zeltimer sessions code --date 2026-07-24
 zeltimer sessions --from 2026-07-20 --to 2026-07-24
 ```
 
-## Demo TUI
+## TUI
 
-`zeltimer tui` opens a small curses interface over the same timer services used
-by the CLI. It has a ticket-style timer list on the left and a session detail
-panel on the right. It can browse one day or a date range, show sessions and
-totals, start or stop the selected timer, and refresh the view.
+Running `zeltimer` with no subcommand opens the TUI, built on
+[Textual](https://textual.textualize.io/) (`tui.py` + `tui.tcss`) over the same
+timer services used by the CLI. A timer list on the left, that timer's
+sessions as cards on the right. It can browse one day or a date range, start
+or stop the selected timer (prompting for a session title), and ticks every
+second so an active session's duration stays live.
 
 Controls:
 
 ```text
-up/down or j/k  select timer
-enter or s      start/stop selected timer
-p/n             previous/next day or range window
-t               today
-d               set one date
-g               set date range
-r               refresh
-q               quit
+up/down    select timer
+enter or s start/stop selected timer
+p/n        previous/next day or range window
+t          today
+d          set one date
+g          set date range
+r          refresh
+:          command palette
+q          quit
 ```
 
 ## Notes From Old Attempts

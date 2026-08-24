@@ -1,0 +1,45 @@
+Screen {
+    background: $surface-darken-1;
+}
+
+#range-label {
+    color: $accent;
+    text-style: bold;
+    padding: 0 2;
+}
+
+#panes {
+    height: 1fr;
+    padding: 0 2 1 2;
+}
+
+#timer-pane {
+    width: 42;
+    height: 100%;
+    border: round $primary-muted;
+    margin-right: 2;
+}
+
+#timer-list {
+    height: 1fr;
+}
+
+#session-pane {
+    width: 1fr;
+    height: 100%;
+    border: round $primary-muted;
+    padding: 0 1;
+}
+
+#session-header {
+    color: $accent;
+    text-style: bold;
+    height: auto;
+    margin-bottom: 1;
+    padding: 0 1;
+}
+
+#session-list {
+    height: 1fr;
+    padding: 0 1;
+}

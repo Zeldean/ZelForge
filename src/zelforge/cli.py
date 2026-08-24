@@ -33,9 +33,13 @@ MODULES = [
 ]
 
 
-@cli.callback()
-def main() -> None:
-    """ZelForge CLI."""
+@cli.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """ZelForge CLI. Bare command opens the TUI."""
+    if ctx.invoked_subcommand is None:
+        from .tui import run
+
+        run()
 
 
 @cli.command()
